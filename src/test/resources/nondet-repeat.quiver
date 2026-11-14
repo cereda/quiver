@@ -1,0 +1,25 @@
+# Quiver non-determinism with the 'repeat' strategy.
+#
+# Two 'a'-transitions from q0. The 'repeat' strategy re-applies the first
+# matching rule until no rule matches or maxIterations is reached, each on
+# its own automaton clone.
+#
+# "a" is accepted (both paths reach accepting q1 or q2).
+# "b" is rejected (no transition out of q0 on b).
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q1, q2 ]
+  strategy => repeatTest
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q0, a) -> (q2, 0)
+  }
+}
+
+strategy repeatTest repeat max 3 => {
+  (q0, a) -> ($x, $n) => {
+    (q0, a) -> ($x, $n) => _
+    _ => (q0, a) -> ($x, $n + 1)
+  }
+}

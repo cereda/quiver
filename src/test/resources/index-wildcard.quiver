@@ -1,0 +1,22 @@
+# A program whose rules cover every shape of pattern.
+#
+# The rule with the wildcard pattern matches any subject, so it fires even
+# though the program also carries a rule whose pattern is an arrow. The rule
+# index must not hide it.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+  }
+}
+
+# The wildcard pattern: matches every subject.
+_ => {
+  _ => (q0, b) -> (q1, 0)
+}
+
+# An arrow-shaped pattern, which is here to give the index a second bucket.
+(q9, z9) => {
+  _ => (q0, zzz) -> (q1, 0)
+}

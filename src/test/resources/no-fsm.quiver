@@ -1,0 +1,5 @@
+# A program with rules but no FSM header: the REPL reports that the session
+# has no automaton to recognize against.
+(q0, a) -> ($x, $n) => {
+  _ => (q0, a) -> ($x, $n + 1)
+}

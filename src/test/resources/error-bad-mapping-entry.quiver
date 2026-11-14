@@ -1,0 +1,9 @@
+# The mapping entry is not an arrow at all: the parser must report a Quiver error
+# instead of failing with a ClassCastException.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a)
+  }
+}

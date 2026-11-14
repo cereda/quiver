@@ -1,0 +1,23 @@
+# Quiver non-determinism with the 'all' strategy.
+#
+# Two 'a'-transitions from q0. The 'all' strategy fires the rule on every
+# matching transition, each on its own automaton clone.
+#
+# "a" is accepted (both paths reach accepting q1 or q2).
+# "b" is rejected (no transition out of q0 on b).
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q1, q2 ]
+  strategy => allTest
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q0, a) -> (q2, 0)
+  }
+}
+
+strategy allTest all => {
+  (q0, a) -> ($x, $n) => {
+    _ => emit($n + 1)
+  }
+}

@@ -1,0 +1,31 @@
+# Test Quiver adaptive primitives: $state, transitions-from, clone-automaton
+# Plain identifiers are literal symbols; $-prefixed identifiers are variables.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q0, b) -> (q1, 0)
+    (q1, b) -> (q2, 0)
+    (q1, c) -> (q2, 0)
+  }
+}
+
+# Emit current state on 'a'
+(q0, a) -> ($x, $n) => {
+  _ => emit($state)
+  _ => (q0, a) -> ($x, $n + 1)
+}
+
+# Emit transitions from q0 on 'b'
+(q0, b) -> ($x, $n) => {
+  _ => emit(transitions-from(q0))
+  _ => (q0, b) -> ($x, $n + 1)
+}
+
+# Clone automaton on 'c'
+(q1, c) -> ($x, $n) => {
+  _ => emit(clone-automaton())
+  _ => (q2, c) -> ($x, 0)
+}

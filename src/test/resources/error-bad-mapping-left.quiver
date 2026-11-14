@@ -1,0 +1,9 @@
+# The mapping entry's left side is not a pair: the interpreter must report a
+# Quiver error instead of failing with a ClassCastException.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    q0 -> (q0, 0)
+  }
+}

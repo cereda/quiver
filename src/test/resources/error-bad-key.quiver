@@ -1,0 +1,5 @@
+# Error test file: unknown FSM key on line 3
+@fsm => {
+  start => q0
+  xyzzy => q1
+}

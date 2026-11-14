@@ -1,0 +1,2 @@
+# The left branch of the diamond: includes the shared file.
+include "diamond-shared.quiver"

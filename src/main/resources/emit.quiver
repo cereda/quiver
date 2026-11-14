@@ -1,0 +1,23 @@
+# Emit test: prints the counter value on each 'a'.
+# Plain identifiers are literal symbols; `$`-prefixed identifiers are variables.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q0, b) -> (q1, 0)
+  }
+}
+
+# Count a's up and emit the counter
+(q0, a) -> ($x, $n) => {
+  (q0, a) -> ($x, $n) => _
+  _ => (q0, a) -> ($x, $n + 1)
+  _ => emit($n + 1)
+}
+
+# Accept b and move to q1
+(q0, b) -> ($x, $n) => {
+  _ => (q0, b) -> (q1, 0)
+}

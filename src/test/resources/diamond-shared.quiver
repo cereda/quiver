@@ -1,0 +1,8 @@
+# The shared file of the diamond include: merged once, not twice.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+  }
+}

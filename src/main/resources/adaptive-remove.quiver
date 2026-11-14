@@ -1,0 +1,22 @@
+# Quiver adaptive remove example: a rule deletes a transition, and the deletion
+# is permanent.
+#
+# The mapping loops on 'a' in the accepting state q1, so an input of any
+# number of a's would be accepted. The rule removes the 'a'-transition out of
+# q1 the first time it is taken, so a third 'a' can never be read.
+#
+# "a" and "aa" are accepted; "aaa" is rejected.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q1, a) -> (q1, 0)
+  }
+}
+
+# On 'a' out of q1, remove the (q1, a) transition and do not insert it again.
+(q1, a) -> ($x, $n) => {
+  (q1, a) -> ($x, $n) => _
+}

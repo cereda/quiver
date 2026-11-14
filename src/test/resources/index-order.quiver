@@ -1,0 +1,21 @@
+# A program whose rules must be consulted in source order.
+#
+# The `first` strategy fires the first rule that matches, so the wildcard
+# rule below wins over the arrow-shaped rule that follows it. The rule index
+# must not reorder the rules it returns.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+  }
+}
+
+# Declared first, so this is the rule that fires.
+_ => {
+  _ => (q0, b) -> (q1, 0)
+}
+
+(q0, a) -> ($x, $n) => {
+  _ => (q0, c) -> (q1, 0)
+}

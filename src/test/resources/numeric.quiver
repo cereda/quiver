@@ -1,0 +1,9 @@
+# Numeric literals: a negative value and a unary plus.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, -1)
+    (q0, b) -> (q0, +7)
+  }
+}

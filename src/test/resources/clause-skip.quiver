@@ -1,0 +1,15 @@
+# The rule fires on the (q0, a) transition, but its body mentions the
+# (q1, b) transition: the clause whose left pattern does not match the
+# subject must be skipped, so the (q1, b) transition must survive.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q1, b) -> (q1, 0)
+  }
+}
+
+(q0, a) -> ($x, $n) => {
+  (q1, b) -> ($y, $m) => _
+}

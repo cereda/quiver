@@ -1,0 +1,9 @@
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q0, b) -> (q1, 0)
+  }
+}
+include "include-sub.quiver"

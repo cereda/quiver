@@ -1,0 +1,15 @@
+# Quiver non-determinism example: two 'a'-transitions from q0,
+# with no rewrite rules.
+#
+# "a" is accepted (the q2 path reaches the accepting state);
+# "ab" and "ac" are rejected (q2 has no outgoing transitions,
+# q1's (q1,b) leads to non-accepting q1).
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q0, a) -> (q2, 0)
+    (q1, b) -> (q1, 0)
+  }
+}

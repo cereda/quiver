@@ -1,0 +1,19 @@
+# A program whose variable-shaped rule must fire.
+#
+# A variable matches any term, so the rule fires on every subject, even
+# though the program also carries a rule whose pattern is an arrow.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+  }
+}
+
+$x => {
+  _ => (q0, b) -> (q1, 0)
+}
+
+(q9, z9) => {
+  _ => (q0, zzz) -> (q1, 0)
+}

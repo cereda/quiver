@@ -1,0 +1,51 @@
+# Quiver recognizer for the language a^n b^n (n >= 1).
+#
+# Strategy:
+#   q0: count a's up. The counter is carried on BOTH (q0,a) and (q0,b)
+#       so it's available when we switch to b-phase.
+#   q1: count b's down from the a-count.
+#   q2: accepting (reached when the last b decrements the counter to 0).
+#
+# Rules are tried in source order; put the counter==1 case before the
+# generic counter case so it matches first.
+# After clauses fire, the step function re-resolves the transition, so a
+# clause can change the target state of the current (state,symbol).
+# Plain identifiers are literal symbols; `$`-prefixed are variables.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q0, b) -> (q1, 0)
+    (q1, b) -> (q1, 0)
+  }
+}
+
+# Count a's up; carry the same counter on (q0,b) for the b-phase
+(q0, a) -> ($x, $n) => {
+  (q0, a) -> ($x, $n) => _
+  _ => (q0, a) -> ($x, $n + 1)
+  _ => (q0, b) -> (q1, $n + 1)
+}
+
+# b-phase entry with counter == 1: last b, move to accepting q2
+(q0, b) -> ($x, 1) => {
+  _ => (q0, b) -> (q2, 0)
+}
+
+# b-phase entry with counter > 1: switch to q1, consuming one b (decrement)
+(q0, b) -> ($x, $n) => {
+  _ => (q0, b) -> (q1, $n - 1)
+  _ => (q1, b) -> (q1, $n - 1)
+}
+
+# In q1 with counter == 1: last b, move to accepting q2
+(q1, b) -> ($x, 1) => {
+  _ => (q1, b) -> (q2, 0)
+}
+
+# In q1 with counter > 1: decrement counter, stay in q1
+(q1, b) -> ($x, $n) => {
+  _ => (q1, b) -> ($x, $n - 1)
+}

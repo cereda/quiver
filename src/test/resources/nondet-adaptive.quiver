@@ -1,0 +1,30 @@
+# Quiver non-determinism example: two 'a'-transitions from q0.
+#
+# The automaton may take either the (q0,a)->(q1,0) path or the
+# (q0,a)->(q2,0) path. Each path independently rewrites its own
+# (q1,b) or (q2,c) transition to target the accepting state q3.
+#
+# "ab" is accepted via q1; "ac" is accepted via q2; "a" alone is
+# rejected (neither q1 nor q2 is accepting).
+@fsm => {
+  start => q0
+  accepting => $seq [ q3 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q0, a) -> (q2, 0)
+    (q1, b) -> (q1, 0)
+    (q2, c) -> (q2, 0)
+  }
+}
+
+# Path via q1: on 'b', retarget (q1,b) to accepting q3.
+(q1, b) -> ($x, $n) => {
+  (q1, b) -> ($x, $n) => _
+  _ => (q1, b) -> (q3, 0)
+}
+
+# Path via q2: on 'c', retarget (q2,c) to accepting q3.
+(q2, c) -> ($x, $n) => {
+  (q2, c) -> ($x, $n) => _
+  _ => (q2, c) -> (q3, 0)
+}

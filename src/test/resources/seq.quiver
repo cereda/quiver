@@ -1,0 +1,26 @@
+# Quiver sequence example: a sequence literal is stored as a transition's value
+# and matched back by a later rule.
+#
+# The first rule creates the (q1, b) transition and labels it with the
+# sequence [$x, $n]: the target state and the value of the transition that
+# was consulted. The second rule matches that sequence and emits it.
+#
+# "ab" is accepted; "a", "b" and "aba" are rejected.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+  }
+}
+
+# On 'a', create the (q1, b) transition and label it with a sequence.
+(q0, a) -> ($x, $n) => {
+  _ => (q1, b) -> (q2, $seq [ $x, $n ])
+}
+
+# On 'b', match the sequence that the first rule stored and emit it.
+(q1, b) -> ($to, $seq [ $from, $n ]) => {
+  _ => emit($seq [ $from, $n ])
+}

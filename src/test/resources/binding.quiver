@@ -1,0 +1,23 @@
+# Quiver binding example: a binding names a matched term, and the clauses that
+# follow can refer to it by name.
+#
+# The rule matches the transition out of q0 on 'a' and binds it to $t. The
+# nested clause removes exactly that transition, using the name, and creates
+# the one that accepts the rest of the input.
+#
+# "ab" is accepted; "a", "b" and "aa" are rejected.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+  }
+}
+
+(q0, a) -> ($x, $n) => {
+  t <- (q0, a) -> ($x, $n) => {
+    $t => _
+    _ => (q0, b) -> (q1, $n + 1)
+  }
+}

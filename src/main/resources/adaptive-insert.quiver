@@ -1,0 +1,21 @@
+# Quiver adaptive insert example: a rule creates a transition that the automaton
+# did not have before.
+#
+# The mapping has no (q0, b) transition. The rule creates one when the
+# automaton takes the 'a'-transition out of q0, so 'b' becomes readable only
+# after an 'a'.
+#
+# "ab" is accepted; "a" and "b" alone are rejected.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+  }
+}
+
+# On 'a', insert the (q0, b) transition that leads to the accepting state.
+(q0, a) -> ($x, $n) => {
+  _ => (q0, b) -> (q1, 0)
+}

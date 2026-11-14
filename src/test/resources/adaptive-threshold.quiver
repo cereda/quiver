@@ -1,0 +1,28 @@
+# Quiver adaptive retarget example: the value of a transition decides where it
+# leads.
+#
+# The counter on the 'a'-transition out of q0 counts the a's. When it reaches
+# three, the rule retargets the transition to the accepting state q2, so the
+# automaton accepts exactly four a's.
+#
+# "aaaa" is accepted; "aaa" and "aaaaa" are rejected.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+  }
+}
+
+# The counter reached the threshold: retarget the transition to q2.
+(q0, a) -> ($x, 3) => {
+  (q0, a) -> ($x, 3) => _
+  _ => (q0, a) -> (q2, 0)
+}
+
+# Any other counter: count one more a.
+(q0, a) -> ($x, $n) => {
+  (q0, a) -> ($x, $n) => _
+  _ => (q0, a) -> ($x, $n + 1)
+}

@@ -1,0 +1,14 @@
+# A program whose FSM header names a strategy that is not declared: the
+# REPL falls back on the default FIRST strategy over the top-level rules.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  strategy => missingStrategy
+  mapping => {
+    (q0, a) -> (q1, 0)
+  }
+}
+
+(q0, a) -> ($x, $n) => {
+  _ => (q0, a) -> ($x, $n + 1)
+}

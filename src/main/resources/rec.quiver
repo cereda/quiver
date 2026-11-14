@@ -1,0 +1,19 @@
+# Quiver recognizer for the language a+ b+ c+ (one or more of each symbol, in order).
+#
+# The mapping alone is the whole recognizer: no rewrite rule is needed. The
+# states q0 (the a-phase), q1 (the b-phase) and q2 (the c-phase, accepting)
+# enforce the order of the phases by themselves.
+#
+# Plain identifiers are literal symbols; `$`-prefixed identifiers are variables.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q0, b) -> (q1, 0)
+    (q1, b) -> (q1, 0)
+    (q1, c) -> (q2, 0)
+    (q2, c) -> (q2, 0)
+  }
+}

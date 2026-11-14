@@ -1,0 +1,9 @@
+# Simple recognizer for the language "ab" (no adaptive rules).
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q1, b) -> (q2, 0)
+  }
+}

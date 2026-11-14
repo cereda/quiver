@@ -1,0 +1,24 @@
+# A program whose named strategy must fire.
+#
+# The FSM header selects the named strategy, so the rules of that strategy
+# are the ones the run consults. The top-level rule below is not part of the
+# strategy, and must not shadow it.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  strategy => named
+  mapping => {
+    (q0, a) -> (q0, 0)
+  }
+}
+
+strategy named first => {
+  (q0, a) -> ($x, $n) => {
+    _ => (q0, b) -> (q1, 0)
+  }
+}
+
+# A top-level rule, which belongs to no strategy.
+(q9, z9) => {
+  _ => (q0, zzz) -> (q1, 0)
+}

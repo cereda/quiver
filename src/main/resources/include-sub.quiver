@@ -1,0 +1,5 @@
+# Included rule file: counts a's up.
+(q0, a) -> ($x, $n) => {
+  (q0, a) -> ($x, $n) => _
+  _ => (q0, a) -> ($x, $n + 1)
+}

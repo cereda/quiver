@@ -1,0 +1,4 @@
+# A diamond include: the main file includes two files that both include the
+# same third file. This is not a cycle: the shared file is merged once.
+include "diamond-left.quiver"
+include "diamond-right.quiver"

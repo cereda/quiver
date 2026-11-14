@@ -1,0 +1,24 @@
+# A program whose named strategy and top-level rules disagree.
+#
+# The named strategy inserts a transition to the non-accepting state q2, and
+# the top-level rule inserts one to the accepting state q1. The REPL must
+# consult the rules of the active strategy, and rebuild its rule index when
+# the `:strategy` command changes that strategy.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  strategy => named
+  mapping => {
+    (q0, a) -> (q0, 0)
+  }
+}
+
+strategy named first => {
+  (q0, a) -> ($x, $n) => {
+    _ => (q0, b) -> (q2, 0)
+  }
+}
+
+(q0, a) -> ($x, $n) => {
+  _ => (q0, b) -> (q1, 0)
+}

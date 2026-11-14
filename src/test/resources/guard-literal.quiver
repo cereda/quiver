@@ -1,0 +1,20 @@
+# Guard test with true/false literals.
+# Rule with `when true` always fires; rule with `when false` never fires.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+  }
+}
+
+# Guard true: always fires, transitions to q1
+(q0, a) -> ($x, $n) when true => {
+  _ => (q1, a) -> (q1, 0)
+}
+
+# Guard false: never fires
+(q0, a) -> ($x, $n) when false => {
+  _ => (q1, a) -> (q2, 0)
+}

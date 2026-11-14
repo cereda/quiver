@@ -1,0 +1,24 @@
+# Guard test: accepts strings where b is only accepted after at least one 'a'.
+# Counter counts a's; guard `when $n` passes only when counter > 0.
+# Plain identifiers are literal symbols; `$`-prefixed identifiers are variables.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q0, b) -> (q1, 0)
+  }
+}
+
+# Count a's up; carry the counter on (q0,b) too
+(q0, a) -> ($x, $n) => {
+  (q0, a) -> ($x, $n) => _
+  _ => (q0, a) -> ($x, $n + 1)
+  _ => (q0, b) -> (q1, $n + 1)
+}
+
+# Accept b only if counter > 0 (guard: $n is truthy when non-zero)
+(q0, b) -> ($x, $n) when $n => {
+  _ => (q0, b) -> (q2, 0)
+}

@@ -1,0 +1,24 @@
+# Quiver closure test: first-class closures as transition values.
+#
+# On 'a', store a closure (fn $x => $x + $x) as a transition value.
+# On 'b', apply the closure to 21 (=> 42) and move toward the accepting state.
+# "abc" is accepted; "ab" and "a" are rejected (end before accepting state).
+# Plain identifiers are literal symbols; `$`-prefixed identifiers are variables.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q1, 5)
+  }
+}
+
+(q0, a) -> (q1, $n) => {
+  (q0, a) -> (q1, $n) => _
+  _ => (q1, b) -> (q1, fn $x => $x + $x)
+}
+
+(q1, b) -> (q1, $f) => {
+  (q1, b) -> (q1, $f) => _
+  _ => (q1, c) -> (q2, $f(21))
+}
