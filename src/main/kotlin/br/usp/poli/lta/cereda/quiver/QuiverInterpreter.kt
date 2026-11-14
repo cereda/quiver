@@ -2,6 +2,7 @@
 package br.usp.poli.lta.cereda.quiver
 
 import java.io.File
+import java.io.IOException
 
 /**
  * The default fuel budget: the maximum number of steps a run may take before
@@ -1061,18 +1062,37 @@ class Recognizer(
 }
 
 /**
+ * The canonical path of a file, used as the identity of an included file.
+ *
+ * The canonical path resolves the `.` and `..` components of the path and
+ * follows symbolic links, so that the same file reached through different
+ * spellings is recognized as one file and is merged only once. When the
+ * canonicalization fails, the absolute path is used instead.
+ *
+ * @param file the file.
+ * @return the canonical path of the file.
+ */
+internal fun canonicalPath(file: File): String = try {
+    file.canonicalPath
+} catch (_: IOException) {
+    file.absolutePath
+}
+
+/**
  * Recursively resolves `include` directives, merging declarations from included
  * files. Returns a flat list of [Decl] with all includes resolved.
  *
  * A file is merged once: the second time it is reached (through a diamond of
- * includes), its declarations are skipped, so that the rules of the file are
- * not duplicated. A file that includes itself, directly or indirectly, is a
- * cycle and is reported as an error.
+ * includes, or through a different spelling of its path), its declarations are
+ * skipped, so that the rules of the file are not duplicated. A file that
+ * includes itself, directly or indirectly, is a cycle and is reported as an
+ * error.
  *
+ * @param decls the declarations of the program.
  * @param baseDir directory of the file currently being parsed (for resolving
  *   relative include paths)
- * @param included the absolute paths of the files merged so far
- * @param chain the absolute paths of the files being merged right now (the
+ * @param included the canonical paths of the files merged so far
+ * @param chain the canonical paths of the files being merged right now (the
  *   include chain, for cycle detection)
  */
 internal fun resolveIncludes(
@@ -1085,11 +1105,12 @@ internal fun resolveIncludes(
     for (decl in decls) {
         when (decl) {
             is Decl.IncludeDecl -> {
-                val resolvedPath = if (File(decl.path).isAbsolute) {
-                    File(decl.path).absolutePath
+                val resolvedFile = if (File(decl.path).isAbsolute) {
+                    File(decl.path)
                 } else {
-                    File(baseDir, decl.path).absolutePath
+                    File(baseDir, decl.path)
                 }
+                val resolvedPath = canonicalPath(resolvedFile)
                 if (resolvedPath in chain) {
                     throw QuiverException(0, 0, "Circular include detected: $resolvedPath")
                 }
@@ -1144,7 +1165,7 @@ fun runQuiver(
     val included = mutableSetOf<String>()
     val chain = mutableSetOf<String>()
     sourcePath?.let {
-        val path = File(it).absolutePath
+        val path = canonicalPath(File(it))
         included.add(path)
         chain.add(path)
     }

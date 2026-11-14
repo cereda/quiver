@@ -52,6 +52,33 @@ class QuiverReplTest {
     }
 
     @Test
+    fun `the rules command lists the rules of the active strategy`() {
+        // The program has no top-level rule: the rules of the named strategy
+        // are the ones the run consults, and the ones the command reports.
+        val output = runRepl(":load src/test/resources/strategy.quiver\n:rules\n:quit\n")
+        assertContains(output, "Loaded rules (1)")
+        assertContains(output, "Active strategy: REPEAT (1 rules)")
+    }
+
+    @Test
+    fun `the rules command separates the rules the active strategy does not consult`() {
+        // The program declares a named strategy and a top-level rule: the
+        // command reports both, and says which one the run consults.
+        val output = runRepl(":load src/test/resources/index-strategy.quiver\n:rules\n:quit\n")
+        assertContains(output, "Loaded rules (1)")
+        assertContains(output, "Top-level rules (1), not consulted by the active strategy:")
+        assertContains(output, "Active strategy: FIRST (1 rules)")
+    }
+
+    @Test
+    fun `the load command reports an aliased include once`() {
+        // The subfile is included through two spellings of its path, and is
+        // merged once, so the program has one rule.
+        val output = runRepl(":load src/test/resources/include-alias.quiver\n:quit\n")
+        assertContains(output, "1 rule(s)")
+    }
+
+    @Test
     fun `the load command reports the loaded program`() {
         val output = runRepl(":load src/test/resources/rec.quiver\n:quit\n")
         assertContains(output, "Loaded src/test/resources/rec.quiver: 0 rule(s), 0 strategy(ies)")

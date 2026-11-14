@@ -38,7 +38,7 @@ Every example is a Quiver source file. The interpreter recognizes one input
 string against it:
 
 ```bash
-java -jar build/libs/quiver-1.0.0.jar -i src/main/resources/abn.quiver aabb
+java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/abn.quiver aabb
 ```
 
 The command prints `true` when the input is recognized and `false` otherwise.
@@ -46,14 +46,14 @@ The `--trace` option prints what happens at every step on the standard error
 stream, which is how the traces below were produced:
 
 ```bash
-java -jar build/libs/quiver-1.0.0.jar -i src/main/resources/abn.quiver aabb --trace
+java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/abn.quiver aabb --trace
 ```
 
 The interactive REPL loads the same files and recognizes as many inputs as you
 like:
 
 ```bash
-java -jar build/libs/quiver-1.0.0.jar
+java -jar build/libs/quiver-1.0.1.jar
 ```
 
 ```
@@ -914,7 +914,7 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.0.0.jar -i src/main/resources/nondet.quiver a --nondet
+java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/nondet.quiver a --nondet
 ```
 
 ## `nondet-adaptive.quiver`: per-path adaptive actions
@@ -979,8 +979,8 @@ The key point: path q1's retargeting of `(q1,b)` does not affect path q2, and vi
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.0.0.jar -i src/main/resources/nondet-adaptive.quiver ab --nondet
-java -jar build/libs/quiver-1.0.0.jar -i src/main/resources/nondet-adaptive.quiver ac --nondet
+java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/nondet-adaptive.quiver ab --nondet
+java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/nondet-adaptive.quiver ac --nondet
 ```
 
 ## `nondet-strategy.quiver`: non-determinism with the `all` strategy
@@ -1095,6 +1095,6 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.0.0.jar -i src/main/resources/nondet-strategy.quiver a --nondet
-java -jar build/libs/quiver-1.0.0.jar -i src/main/resources/nondet-repeat.quiver a --nondet
+java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/nondet-strategy.quiver a --nondet
+java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/nondet-repeat.quiver a --nondet
 ```

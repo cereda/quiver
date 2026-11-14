@@ -1,0 +1,12 @@
+# The same file included through two spellings of its path: the subfile is
+# merged once, not twice.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q0, b) -> (q1, 0)
+  }
+}
+include "include-sub.quiver"
+include "./include-sub.quiver"

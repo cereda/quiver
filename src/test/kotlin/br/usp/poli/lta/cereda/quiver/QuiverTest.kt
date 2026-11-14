@@ -2,6 +2,7 @@
 package br.usp.poli.lta.cereda.quiver
 
 import org.junit.jupiter.api.Test
+import java.io.File
 import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -487,6 +488,23 @@ class QuiverTest {
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("Circular include"), "Expected 'Circular include', got: $msg")
+    }
+
+    @Test
+    fun `include merges a file reached through different path spellings once`() {
+        // The same file, reached through two spellings of its path, is one
+        // file: its declarations are merged once, not twice.
+        val decls = parseSource(load("include-alias.quiver"))
+        val resolved = resolveIncludes(decls, "src/test/resources", mutableSetOf())
+        val rules = resolved.filterIsInstance<Decl.RuleDecl>()
+        assertEquals(1, rules.size, "Expected the aliased file to be merged once")
+    }
+
+    @Test
+    fun `the canonical path of a file does not depend on the spelling`() {
+        val direct = canonicalPath(File("src/test/resources/include-sub.quiver"))
+        val dotted = canonicalPath(File("src/test/resources/./include-sub.quiver"))
+        assertEquals(direct, dotted, "Expected the two spellings to name the same file")
     }
 
     @Test

@@ -64,7 +64,7 @@ value that it computed earlier, which is what
 Run it with:
 
 ```bash
-java -jar build/libs/quiver-1.0.0.jar -i src/main/resources/rec.quiver aabc
+java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/rec.quiver aabc
 ```
 
 The companion document [the examples](examples.md) walks through every example
@@ -278,9 +278,10 @@ include "other-file.quiver"
 ```
 
 The included file's declarations are merged into the program. The path is resolved
-relative to the directory of the including file. A file is merged once, even when
-it is reached through several paths; a file that includes itself, directly or
-indirectly, is a cycle and is reported as an error.
+relative to the directory of the including file. The resolved path is canonical,
+so the same file reached through different spellings is one file: it is merged
+once, even when it is reached through several paths; a file that includes
+itself, directly or indirectly, is a cycle and is reported as an error.
 
 ## The automaton
 
@@ -556,13 +557,13 @@ The interactive read-eval-print loop loads a program and recognizes inputs again
 it:
 
 ```bash
-java -jar build/libs/quiver-1.0.0.jar
+java -jar build/libs/quiver-1.0.1.jar
 ```
 
 | Command | Meaning |
 |---|---|
 | `:load <file.quiver>` | load a source file: its rules, strategies and FSM header |
-| `:rules` | list the loaded rules and the active strategy |
+| `:rules` | list the rules of the active strategy, and the top-level rules it does not consult |
 | `:strategy <kind>` | set the strategy: `first`, `all` or `repeat [max N]` |
 | `:trace on` / `:trace off` | toggle the step trace |
 | `:nondet on` / `:nondet off` | toggle the non-deterministic recognition |
@@ -576,6 +577,11 @@ java -jar build/libs/quiver-1.0.0.jar
 Any other line is treated as an input to recognize against the loaded automaton.
 The `:strategy` command with no argument prints its usage instead of being taken for
 an input.
+
+The `:rules` command reports the rules of the active strategy, which are the ones
+the run consults. When the program declares top-level rules that the active
+strategy does not consult, they are listed separately, under a heading that says
+so.
 
 In debug mode, `:step` consumes one symbol, `:inspect` shows the current state,
 the position and the automaton, `:continue` runs to completion, and `:quit` returns

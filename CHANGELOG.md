@@ -13,6 +13,19 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-14
+
+### Fixed
+
+- The `include` directive now identifies the included file by its canonical
+  path, so the same file reached through different spellings of its path, such
+  as `sub.quiver` and `./sub.quiver`, is merged once and not twice.
+- The `:rules` command of the interactive loop now reports the rules of the
+  active strategy, which are the ones the run consults. The top-level rules
+  that the active strategy does not consult are listed separately, under a
+  heading that says so. The command used to report no rules at all when the
+  program declared its rules in a named strategy.
+
 ## [1.0.0] - 2026-11-14
 
 ### Added
@@ -42,5 +55,6 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 - The example programs and the documentation: the normative language
   reference and the step-by-step walkthrough of every example.
 
-[Unreleased]: https://github.com/cereda/quiver/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/cereda/quiver/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/cereda/quiver/tree/v1.0.1
 [1.0.0]: https://github.com/cereda/quiver/tree/v1.0.0

@@ -188,16 +188,38 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
         println("  :quit        exit debug mode (return to REPL)")
     }
 
-    /** Prints the loaded rules and a summary of the active strategy. */
+    /**
+     * Prints the rules of the active strategy, the rules of the program that
+     * the active strategy does not consult, and a summary of the strategy.
+     */
     private fun printRules() {
         val strategy = activeStrategy
-        if (rules.isEmpty() || strategy == null) {
+        if (strategy == null) {
             println("(no rules loaded)")
             return
         }
-        println("Loaded rules (${rules.size}):")
-        rules.forEachIndexed { i, rule ->
+        if (rules.isEmpty() && strategy.rules.isEmpty()) {
+            println("(no rules loaded)")
+            return
+        }
+        // The rules of the active strategy are the ones that fire, so they are
+        // the ones the session reports as the loaded rules.
+        val active = strategy.rules
+        println("Loaded rules (${active.size}):")
+        active.forEachIndexed { i, rule ->
             println("  [$i] ${exprToString(rule.pattern)} => { ${rule.clauses.size} clause(s) }")
+        }
+        // The selection of a strategy is exclusive: a program that names a
+        // strategy in its header runs that strategy's rules and not the
+        // top-level ones. The top-level rules that the strategy does not
+        // consult are listed separately, so that the session shows what the
+        // program declares as well as what it runs.
+        val shadowed = rules.filterNot { it in active }
+        if (shadowed.isNotEmpty()) {
+            println("Top-level rules (${shadowed.size}), not consulted by the active strategy:")
+            shadowed.forEachIndexed { i, rule ->
+                println("  [$i] ${exprToString(rule.pattern)} => { ${rule.clauses.size} clause(s) }")
+            }
         }
         println("Active strategy: ${strategy.kind.name} (${strategy.rules.size} rules)")
     }
@@ -221,7 +243,7 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
             // The `include` directives are resolved relative to the directory
             // of the loaded file, not to the working directory.
             val baseDir = file.absoluteFile.parent ?: "."
-            val sourcePath = file.absolutePath
+            val sourcePath = canonicalPath(file)
             val resolved =
                 resolveIncludes(
                     decls,

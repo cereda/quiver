@@ -1,7 +1,7 @@
 # Quiver: a term-rewriting language for adaptive automata
 
 A Kotlin/JVM implementation of **Quiver**, a type-safe term-rewriting language
-for adaptive automata. The current release is **1.0.0**.
+for adaptive automata. The current release is **1.0.1**.
 
 An **adaptive automaton** is a finite automaton whose transition function may change
 while it runs. Quiver describes such an automaton as a set of rewrite rules: each rule
@@ -34,9 +34,9 @@ The build produces a self-contained executable jar (the shadow jar replaces the 
 jar in `build/libs`), so the interpreter runs with no Gradle and no classpath:
 
 ```bash
-java -jar build/libs/quiver-1.0.0.jar -i src/main/resources/rec.quiver aabbcc
+java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/rec.quiver aabbcc
 # the same jar starts the interactive REPL when it gets no arguments:
-java -jar build/libs/quiver-1.0.0.jar
+java -jar build/libs/quiver-1.0.1.jar
 ```
 
 The command prints `true` when the input is recognized and `false` otherwise; an
@@ -68,7 +68,7 @@ The executable jar starts the interactive REPL when it is run without arguments.
 ### REPL
 
 ```bash
-java -jar build/libs/quiver-1.0.0.jar
+java -jar build/libs/quiver-1.0.1.jar
 ```
 
 While developing, `./gradlew runRepl` starts the same REPL from the sources.
@@ -76,7 +76,7 @@ While developing, `./gradlew runRepl` starts the same REPL from the sources.
 | Command | Meaning |
 |---|---|
 | `:load <file.quiver>` | load a source file: its rules, strategies and FSM header |
-| `:rules` | list the loaded rules and the active strategy |
+| `:rules` | list the rules of the active strategy, and the top-level rules it does not consult |
 | `:strategy <kind>` | set the strategy: `first`, `all` or `repeat [max N]` |
 | `:trace on` / `:trace off` | toggle the step trace |
 | `:nondet on` / `:nondet off` | toggle the non-deterministic recognition |
@@ -122,8 +122,8 @@ step, with the trace of a concrete input.
 Each of them is a complete program:
 
 ```bash
-java -jar build/libs/quiver-1.0.0.jar -i src/main/resources/abn.quiver aabb  # true
-java -jar build/libs/quiver-1.0.0.jar -i src/main/resources/abn.quiver aab   # false
+java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/abn.quiver aabb  # true
+java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/abn.quiver aab   # false
 ```
 
 This interpreter defines the precise operational semantics, notably the matching
