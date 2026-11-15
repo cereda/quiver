@@ -13,6 +13,34 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-15
+
+### Added
+
+- The **set algebra**: a set is now a value that a program manipulates. The
+  primitive `set(seq)` builds a set out of a sequence, dropping the
+  repetitions and keeping the order of the elements; `union(left, right)`,
+  `intersection(left, right)` and `difference(left, right)` combine two sets,
+  and `contains(set, element)` tells whether an element belongs to a set. The
+  primitives `size` and `is-empty` now accept a set as well as a sequence.
+- The **set variable**, written `%x`: an unbound set variable matches a set
+  and binds it, and a bound set variable matches the elements of the set it
+  is bound to. The set variable of a sweep collects the values it matches
+  across the firings, so that a sweep may gather a collection.
+- The **bulk actions**: an insertion whose symbol (or whose target state) is a
+  set inserts one transition per element of the set, and one per combination
+  of the two sets when both of them are sets; a removal whose symbol is a set
+  removes every transition under those symbols.
+- The example program `set.quiver`, which loads an alphabet as a set, builds
+  the transitions of the alphabet with a bulk action, and collects the symbols
+  it reads with a sweep, and its walkthrough in the examples document.
+
+### Changed
+
+- A set used directly as a guard is false when it is empty, like a sequence.
+- The error message of the `set` primitive names the sequence and the set it
+  accepts: `set expects a sequence or a set value`.
+
 ## [1.2.0] - 2026-11-15
 
 ### Added
@@ -129,7 +157,8 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 - The example programs and the documentation: the normative language
   reference and the step-by-step walkthrough of every example.
 
-[Unreleased]: https://github.com/cereda/quiver/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/cereda/quiver/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/cereda/quiver/tree/v1.3.0
 [1.2.0]: https://github.com/cereda/quiver/tree/v1.2.0
 [1.1.0]: https://github.com/cereda/quiver/tree/v1.1.0
 [1.0.2]: https://github.com/cereda/quiver/tree/v1.0.2

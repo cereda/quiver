@@ -15,6 +15,8 @@ import java.math.BigInteger
  *   - List:   a sequence of values, used for the `$seq [ ... ]` construct.
  *   - Int:    an integer literal used in arithmetic such as `y + 1`.
  *   - Bool:   a boolean literal, result of recognition (`true` / `false`).
+ *   - Set:    a set of values, used by the set algebra and by the bulk
+ *             actions of the rewrite rules.
  */
 sealed class Value {
     /**
@@ -23,7 +25,7 @@ sealed class Value {
      * Each tag corresponds to exactly one [Value] subtype; a rule pattern only
      * fires on subjects whose type is compatible with the pattern's head.
      */
-    enum class Type { SYMBOL, INT, BOOL, PAIR, SEQ, FUNC, AUTOMATON }
+    enum class Type { SYMBOL, INT, BOOL, PAIR, SEQ, FUNC, AUTOMATON, SET }
 
     /** The static type of this value, used for type-safe rule application. */
     open val type: Type
@@ -35,6 +37,7 @@ sealed class Value {
             is Seq -> Type.SEQ
             is Func -> Type.FUNC
             is Automaton -> Type.AUTOMATON
+            is Set -> Type.SET
         }
 
     /**
@@ -100,6 +103,17 @@ sealed class Value {
     data class Automaton(val automaton: br.usp.poli.lta.cereda.quiver.Automaton) : Value()
 
     /**
+     * A set of values, produced by the set primitives.
+     *
+     * A set has no repetitions: the elements keep the order they were added
+     * in, which is the order a bulk action follows, but the equality of two
+     * sets does not depend on the order.
+     *
+     * @property items the elements of the set.
+     */
+    data class Set(val items: kotlin.collections.Set<Value>) : Value()
+
+    /**
      * True when this value is a [Symbol].
      */
     fun isSymbol(): Boolean = this is Symbol
@@ -147,6 +161,13 @@ sealed class Value {
     fun asAutomaton(): br.usp.poli.lta.cereda.quiver.Automaton =
         (this as? Automaton)?.automaton ?: throw typeError("automaton")
 
+    /**
+     * Returns this value's elements as a set.
+     *
+     * @throws QuiverException when the value is not a set.
+     */
+    fun asSet(): kotlin.collections.Set<Value> = (this as? Set)?.items ?: throw typeError("set")
+
     /** Builds the error reported when a value has an unexpected type. */
     private fun typeError(expected: String): QuiverException =
         QuiverException(0, 0, "Expected a $expected value, got ${type.name.lowercase()}")
@@ -174,6 +195,11 @@ internal fun valueToString(v: Value): String = when (v) {
     is Value.Func -> "<fn ${v.params.joinToString(",")} => ...>"
 
     is Value.Automaton -> "<automaton states=${v.automaton.states.size} transitions=${v.automaton.transitions.size}>"
+
+    is Value.Set -> {
+        val items = v.items.joinToString(",") { valueToString(it) }
+        if (items.isEmpty()) "{}" else "{$items}"
+    }
 }
 
 /**
@@ -417,6 +443,48 @@ sealed class Expr {
      * @property expr the expression denoting the sequence.
      */
     data class Size(val expr: Expr) : Expr()
+
+    /**
+     * The set constructor: `set(seq)` returns the set of the elements of the
+     * sequence denoted by `expr`.
+     *
+     * @property expr the expression denoting the sequence.
+     */
+    data class Set(val expr: Expr) : Expr()
+
+    /**
+     * The union of two sets: `union(left, right)`.
+     *
+     * @property left the left-hand set.
+     * @property right the right-hand set.
+     */
+    data class Union(val left: Expr, val right: Expr) : Expr()
+
+    /**
+     * The intersection of two sets: `intersection(left, right)`.
+     *
+     * @property left the left-hand set.
+     * @property right the right-hand set.
+     */
+    data class Intersection(val left: Expr, val right: Expr) : Expr()
+
+    /**
+     * The difference of two sets: `difference(left, right)` is the set of the
+     * elements of the left-hand set that are not in the right-hand one.
+     *
+     * @property left the left-hand set.
+     * @property right the right-hand set.
+     */
+    data class Difference(val left: Expr, val right: Expr) : Expr()
+
+    /**
+     * The membership test: `contains(set, element)` tells whether the element
+     * belongs to the set.
+     *
+     * @property set the expression denoting the set.
+     * @property element the expression denoting the element.
+     */
+    data class Contains(val set: Expr, val element: Expr) : Expr()
 
     /** Clone the current automaton: `clone-automaton()`. */
     object CloneAutomaton : Expr()

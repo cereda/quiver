@@ -247,6 +247,74 @@ class QuiverParserTest {
     }
 
     @Test
+    fun `the set constructor is parsed`() {
+        val decls = parseSource("x <- set([ a, b ]) => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        val expected = Expr.Set(Expr.Seq(listOf(Expr.Sym("a"), Expr.Sym("b"))))
+        assertEquals(expected, bind.expr)
+    }
+
+    @Test
+    fun `the union of two sets is parsed`() {
+        val decls = parseSource("x <- union(a, b) => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        val expected = Expr.Union(Expr.Sym("a"), Expr.Sym("b"))
+        assertEquals(expected, bind.expr)
+    }
+
+    @Test
+    fun `the intersection of two sets is parsed`() {
+        val decls = parseSource("x <- intersection(a, b) => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        val expected = Expr.Intersection(Expr.Sym("a"), Expr.Sym("b"))
+        assertEquals(expected, bind.expr)
+    }
+
+    @Test
+    fun `the difference of two sets is parsed`() {
+        val decls = parseSource("x <- difference(a, b) => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        val expected = Expr.Difference(Expr.Sym("a"), Expr.Sym("b"))
+        assertEquals(expected, bind.expr)
+    }
+
+    @Test
+    fun `the membership test is parsed`() {
+        val decls = parseSource("x <- contains(a, b) => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        val expected = Expr.Contains(Expr.Sym("a"), Expr.Sym("b"))
+        assertEquals(expected, bind.expr)
+    }
+
+    @Test
+    fun `the arguments of a set primitive may be arithmetic expressions`() {
+        val decls = parseSource("x <- union(\$a + 1, \$b) => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        val expected = Expr.Union(Expr.Plus(Expr.Sym("\$a"), Expr.IntLit(1)), Expr.Sym("\$b"))
+        assertEquals(expected, bind.expr)
+    }
+
+    @Test
+    fun `a set variable is parsed`() {
+        val decls = parseSource("x <- %syms => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        assertEquals(Expr.Sym("%syms"), bind.expr)
+    }
+
+    @Test
+    fun `a set variable may be bound`() {
+        val decls = parseSource("%syms <- \$seq [ a ] => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        assertEquals("%syms", bind.varName)
+        assertEquals(Expr.Seq(listOf(Expr.Sym("a"))), bind.expr)
+    }
+
+    @Test
+    fun `a set primitive without its arguments is a syntax error`() {
+        assertFailsWith<QuiverException> { parseSource("x <- union(a) => { _ => 1 }") }
+    }
+
+    @Test
     fun `an arithmetic expression is an element of a pair`() {
         // The grammar says the elements of a pair are terms, and a term may be
         // an arithmetic expression.

@@ -90,6 +90,21 @@ sealed class Token {
     /** The `size` keyword token (the sequence-size primitive). */
     object Size : Token()
 
+    /** The `set` keyword token (the set constructor). */
+    object Set : Token()
+
+    /** The `union` keyword token (the set-union primitive). */
+    object Union : Token()
+
+    /** The `intersection` keyword token (the set-intersection primitive). */
+    object Intersection : Token()
+
+    /** The `difference` keyword token (the set-difference primitive). */
+    object Difference : Token()
+
+    /** The `contains` keyword token (the set-membership primitive). */
+    object Contains : Token()
+
     /** The `$state` adaptive primitive token. */
     data class StateRef(override val line: Int, override val column: Int) : Token()
 
@@ -151,14 +166,19 @@ private val KEYWORDS = mapOf(
     "include" to Token.Include,
     "each" to Token.Each,
     "size" to Token.Size,
+    "set" to Token.Set,
+    "union" to Token.Union,
+    "intersection" to Token.Intersection,
+    "difference" to Token.Difference,
+    "contains" to Token.Contains,
 )
 
 /**
- * The characters an identifier may start with: letters, and the four symbols
- * that begin variable names (`$`), include paths (`.` and `/`) and the `$seq`
- * positional marker (`@`) accepted for historical reasons.
+ * The characters an identifier may start with: letters, and the five symbols
+ * that begin variable names (`$` and `%`), include paths (`.` and `/`) and the
+ * `$seq` positional marker (`@`) accepted for historical reasons.
  */
-private const val IDENTIFIER_START_CHARS = "\$@./"
+private const val IDENTIFIER_START_CHARS = "\$@./%"
 
 /** The characters an identifier may continue with, beyond letters and digits. */
 private const val IDENTIFIER_CONTINUATION_CHARS = "\$._/"
@@ -738,6 +758,20 @@ class Parser(private val tokens: List<Token>) {
      * a pair may be arithmetic expressions, as in `($n + 1, $m)`.
      */
     private fun parsePair(): Expr {
+        val term = parseArithmetic()
+        return if (isToken(Token.Comma)) {
+            advance()
+            Expr.Pair(term, parsePair())
+        } else {
+            term
+        }
+    }
+
+    /**
+     * Parses an arithmetic expression: an operand and the arithmetic operators
+     * over it, left-associatively.
+     */
+    private fun parseArithmetic(): Expr {
         var term = parseOperand()
         while (true) {
             if (isToken(Token.Plus)) {
@@ -750,12 +784,7 @@ class Parser(private val tokens: List<Token>) {
                 break
             }
         }
-        return if (isToken(Token.Comma)) {
-            advance()
-            Expr.Pair(term, parsePair())
-        } else {
-            term
-        }
+        return term
     }
 
     /**
@@ -795,6 +824,16 @@ class Parser(private val tokens: List<Token>) {
         is Token.IsEmpty -> parseIsEmpty()
 
         is Token.Size -> parseSize()
+
+        is Token.Set -> parseSet()
+
+        is Token.Union -> parseUnion()
+
+        is Token.Intersection -> parseIntersection()
+
+        is Token.Difference -> parseDifference()
+
+        is Token.Contains -> parseContains()
 
         is Token.CloneAutomaton -> parseCloneAutomaton()
 
@@ -907,6 +946,60 @@ class Parser(private val tokens: List<Token>) {
         val inner = parseExpr()
         expect(Token.Rparen) // )
         return Expr.Size(inner)
+    }
+
+    /** Parses `set(seq)`, consuming the keyword. */
+    private fun parseSet(): Expr {
+        advance() // set
+        expect(Token.Lparen) // (
+        val inner = parseExpr()
+        expect(Token.Rparen) // )
+        return Expr.Set(inner)
+    }
+
+    /** Parses `union(left, right)`, consuming the keyword. */
+    private fun parseUnion(): Expr {
+        advance() // union
+        val (left, right) = parseSetArguments()
+        return Expr.Union(left, right)
+    }
+
+    /** Parses `intersection(left, right)`, consuming the keyword. */
+    private fun parseIntersection(): Expr {
+        advance() // intersection
+        val (left, right) = parseSetArguments()
+        return Expr.Intersection(left, right)
+    }
+
+    /** Parses `difference(left, right)`, consuming the keyword. */
+    private fun parseDifference(): Expr {
+        advance() // difference
+        val (left, right) = parseSetArguments()
+        return Expr.Difference(left, right)
+    }
+
+    /** Parses `contains(set, element)`, consuming the keyword. */
+    private fun parseContains(): Expr {
+        advance() // contains
+        val (set, element) = parseSetArguments()
+        return Expr.Contains(set, element)
+    }
+
+    /**
+     * Parses the two arguments of a binary set primitive: `left, right`.
+     *
+     * The arguments are terms, and not full expressions: the comma separates
+     * the two arguments, and not the elements of a pair.
+     *
+     * @return the two arguments.
+     */
+    private fun parseSetArguments(): Pair<Expr, Expr> {
+        expect(Token.Lparen) // (
+        val left = parseArithmetic()
+        expect(Token.Comma) // ,
+        val right = parseArithmetic()
+        expect(Token.Rparen) // )
+        return Pair(left, right)
     }
 
     /** Parses `clone-automaton()`, consuming the keyword. */

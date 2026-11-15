@@ -24,14 +24,17 @@ semantic choice is described here.
 8. [Strategies](#strategies)
 9. [Adaptive primitives](#adaptive-primitives)
 10. [The inspection primitives](#the-inspection-primitives)
-11. [Errors](#errors)
-12. [The command-line interface](#the-command-line-interface)
-13. [The REPL](#the-repl)
-14. [Appendix: the grammar in one block](#appendix-the-grammar-in-one-block)
+11. [The sets](#the-sets)
+12. [Errors](#errors)
+13. [The command-line interface](#the-command-line-interface)
+14. [The REPL](#the-repl)
+15. [Appendix: the grammar in one block](#appendix-the-grammar-in-one-block)
 
 The subsections of the two chapters that matter most to the semantics are
 [the epsilon transition](#the-epsilon-transition), [the cycle
-guard](#the-cycle-guard) and [the closure](#the-closure).
+guard](#the-cycle-guard) and [the closure](#the-closure). The chapter on
+[the sets](#the-sets) describes the set algebra, the set variables and the
+bulk actions.
 
 ## A first program
 
@@ -69,7 +72,7 @@ value that it computed earlier, which is what
 Run it with:
 
 ```bash
-java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/rec.quiver aabc
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/rec.quiver aabc
 ```
 
 The companion document [the examples](examples.md) walks through every example
@@ -91,18 +94,20 @@ A `#` starts a comment that runs to the end of the line.
 
 ### Identifiers and keywords
 
-An identifier starts with a letter or with one of `$ @ . /`, and continues with
+An identifier starts with a letter or with one of `$ @ . / %`, and continues with
 letters, digits, or one of `$ . _ /`. Identifiers are case-sensitive.
 
 | Form | Meaning |
 |---|---|
 | `q0`, `a`, `true` | a literal symbol (or a keyword, see below) |
 | `$x`, `$n` | a **variable** |
+| `%x`, `%syms` | a **set variable** (see [The sets](#the-sets)) |
 | `$seq` | keyword: a sequence literal |
 | `$state` | keyword: the adaptive primitive that reads the current state |
 | `@fsm` | keyword: the automaton header |
 | `transitions-from`, `targets-from`, `symbols-from`, `clone-automaton` | keywords: the adaptive primitives |
-| `is-empty`, `size` | keywords: the sequence primitives |
+| `is-empty`, `size` | keywords: the inspection primitives |
+| `set`, `union`, `intersection`, `difference`, `contains` | keywords: the set primitives |
 | `each` | keyword: the sweep clause |
 
 The keywords `fn`, `when`, `true`, `false`, `emit` and `include` are reserved.
@@ -172,6 +177,10 @@ symbol position of a transition it denotes the internal transition (see [The
 epsilon transition](#the-epsilon-transition)). Everywhere else it is a symbol
 like any other, and a state may be named `epsilon`.
 
+An identifier that starts with `%` denotes a **set variable**: `%x`, `%syms`. A
+set variable matches a set, and, once it is bound, it denotes the elements of
+that set. It is described in [The sets](#the-sets).
+
 ### Pairs and arrows
 
 `(a, b)` is a **pair**. `a -> b` is an **arrow**; in this implementation an arrow is
@@ -196,6 +205,23 @@ $seq [ (a, b), c ]   # a sequence of a pair and a symbol
 
 A sequence literal is a term: it matches a sequence, term by term, and it evaluates
 to a sequence of values.
+
+### Sets
+
+`set(seq)` is a **set**: it evaluates to the set of the elements of the
+sequence `seq`. The repetitions are dropped, and the elements keep the order
+they were added in, which is the order a bulk action follows.
+
+```quiver
+set([ a, b, a ])   # a set of two elements: a and b
+```
+
+The other set primitives are `union`, `intersection`, `difference` and
+`contains`; they are described in [The sets](#the-sets), together with the set
+variables and the bulk actions they enable.
+
+A set is a value, like an integer or a sequence: it may be stored in the value
+of a transition, matched by a set variable, and manipulated by the rules.
 
 ### Arithmetic
 
@@ -411,6 +437,7 @@ these rules:
 * a boolean is its own truth value;
 * an integer is true when it is not zero;
 * a sequence is true when it is not empty;
+* a set is true when it is not empty;
 * any other value is true.
 
 A rule without a guard always passes it.
@@ -438,9 +465,21 @@ subject, that is to an arrow `((from, symbol), (to, value))`; the transition it
 denotes is the one the step consulted. A left-hand side that evaluates to
 anything else denotes no transition, and the removal does nothing.
 
+A removal is **key-based**: it removes every transition whose `(from, symbol)`
+key is the one the left-hand side denotes, and not only the transition the step
+consulted. A left-hand side that names only the key, as in `(q0, a) -> _`, is
+enough to remove a transition.
+
 The right-hand side denotes a transition when it evaluates to an arrow over
 symbols, `(from, symbol) -> (to, value)`. Inserting such a transition replaces any
 transition with the same `(from, symbol)` key.
+
+When the symbol or the target state of the inserted transition is a set, the
+insertion is a **bulk action**: it inserts one transition per element of the
+set, or one per combination of the two sets when both of them are sets. The
+transitions that share a key with the inserted ones are removed first, and then
+the new ones are inserted, so several transitions may share a key. The bulk
+actions are described in [The sets](#the-sets).
 
 ### Worked example
 
@@ -497,6 +536,14 @@ transition that a firing inserted is not swept by the same sweep.
 Each firing starts from the environment of the enclosing clause, extended with
 the bindings of the sweep's pattern: the bindings of one firing do not leak
 into the next. A sweep that matches no transition does nothing at all.
+
+A **set variable** of the sweep's pattern is the exception: it *collects* the
+values it matches across the firings, instead of binding one of them. The
+pattern is rewritten before it is matched, so that the set variable matches
+the value at its position. Inside a firing, the set variable is bound to the
+values collected so far; after the sweep, it is bound to the whole collection,
+which the clauses that follow the sweep may use. A set variable that is already
+bound is left alone, and matches the elements of the set it is bound to.
 
 The sweep is how a program performs a **bulk action**: one action, applied to
 many transitions at once.
@@ -649,8 +696,8 @@ Four constructs inspect a sequence, or the transitions of a state.
 |---|---|
 | `targets-from(state)` | the **distinct targets** of the transitions leaving `state`, as a sequence of symbols |
 | `symbols-from(state)` | the **distinct symbols** of the transitions leaving `state`, as a sequence of symbols |
-| `size(expr)` | the number of elements of the sequence `expr`, as an integer |
-| `is-empty(expr)` | whether the sequence `expr` has no elements, as a boolean |
+| `size(expr)` | the number of elements of the sequence or the set `expr`, as an integer |
+| `is-empty(expr)` | whether the sequence or the set `expr` has no elements, as a boolean |
 
 The order of the elements is the order of the transitions in the automaton, and
 the repetitions are dropped: `targets-from` and `symbols-from` return each
@@ -664,10 +711,147 @@ target and each symbol once.
 }
 ```
 
-`size` and `is-empty` apply to sequences only; used on a value of another
-type, they are an error. `is-empty` is the explicit emptiness test, while a
-sequence used directly as a guard follows the truthiness rule and is false
-when it is empty.
+`size` and `is-empty` apply to sequences and to sets; used on a value of
+another type, they are an error. `is-empty` is the explicit emptiness test,
+while a sequence or a set used directly as a guard follows the truthiness rule
+and is false when it is empty.
+
+## The sets
+
+A **set** is a value that holds other values, without repetitions. The set
+algebra gives the programs a way to name a collection of transitions, and to
+act on all of them at once.
+
+### The set primitives
+
+Five constructs build and query sets:
+
+| Primitive | Meaning |
+|---|---|
+| `set(seq)` | the set of the elements of the sequence `seq` |
+| `union(left, right)` | the elements of both sets |
+| `intersection(left, right)` | the elements the two sets have in common |
+| `difference(left, right)` | the elements of the left-hand set that the right-hand set does not have |
+| `contains(set, element)` | whether the element belongs to the set, as a boolean |
+
+The set constructor takes a sequence and drops the repetitions; the elements
+keep the order they were added in. The binary primitives take two sets, and
+`contains` takes a set and an element. A primitive used on a value of the
+wrong type is an error:
+
+```
+set expects a sequence or a set value
+union expects a set value
+```
+
+`size` and `is-empty` apply to a set as well as to a sequence (see [The
+inspection primitives](#the-inspection-primitives)), and a set used directly as
+a guard is false when it is empty (see [Guards](#guards)).
+
+### The set variables
+
+A name that starts with `%` denotes a **set variable**: `%x`, `%syms`. It is
+the third kind of pattern, beside the variables (`$x`) and the wildcard (`_`),
+and it has two behaviours, according to whether it is bound.
+
+An **unbound** set variable matches a **set** and binds it:
+
+```quiver
+(q0, a) -> ($to, %syms) => { ... }
+```
+
+The rule above fires on a transition whose value is a set, and `%syms` is bound
+to that set. A set variable never matches a value that is not a set, so a rule
+whose pattern holds a set variable where the transition carries an integer
+never fires.
+
+A **bound** set variable matches the **elements** of the set it is bound to:
+
+```quiver
+(q0, a) -> ($to, %syms) => {
+  _ => (q0, %syms) -> (q1, 0)
+}
+```
+
+Once `%syms` is bound, it denotes the elements of the set, and the clause above
+acts on every one of them. This is the reification of a set: a set value is
+matched by a set variable, and the same name denotes the elements it holds.
+
+A set variable that is already bound behaves exactly like this in a pattern
+that is not a sweep: it matches the elements of its set, and it never matches
+the set itself.
+
+### The bulk actions
+
+A **bulk action** is an action that applies to many transitions at once. The
+sets make it possible to write one.
+
+An **insertion** whose symbol is a set inserts one transition per element of
+the set:
+
+```quiver
+(q0, a) -> ($to, %syms) => {
+  _ => (q0, %syms) -> (q1, 0)
+}
+```
+
+When `%syms` is bound to the set `{b, c}`, the clause above inserts the
+transitions `(q0, b) -> (q1, 0)` and `(q0, c) -> (q1, 0)`.
+
+An insertion whose **target state** is a set inserts one transition per
+element of the set, and an insertion whose symbol and target are both sets
+inserts their **cartesian product**: one transition per combination of the two
+sets.
+
+```quiver
+(q0, a) -> ($to, ($syms, $targets)) => {
+  _ => (q0, $syms) -> ($targets, 0)
+}
+```
+
+With the symbols `{b, c}` and the targets `{q1, q2}`, the clause inserts four
+transitions.
+
+The transitions that share a key with the inserted ones are removed first, and
+then the new ones are inserted. A bulk action therefore keeps the automaton a
+proper function, and several transitions may share a key when the insertion
+denotes them.
+
+A **removal** whose symbol is a set removes every transition under those
+symbols:
+
+```quiver
+(q0, a) -> ($to, %syms) => {
+  (q0, %syms) -> ($to, $n) => _
+}
+```
+
+With `%syms` bound to `{b, c}`, the clause removes every transition that leaves
+`q0` on `b` or on `c`. The left-hand side of a removal names the key of the
+transitions it removes, so it needs only the source state and the symbols.
+
+### The sweep that collects
+
+The set variable of a **sweep** collects the values it matches, instead of
+binding one of them. The pattern is rewritten before it is matched, so that
+the set variable matches the value at its position, and the collection is a
+set:
+
+```quiver
+(q0, a) -> ($to, $n) => {
+  each (q0, %s) -> ($t, $v) => { }
+  _ => (q0, a) -> ($to, %s)
+}
+```
+
+The sweep above matches every transition that leaves `q0`, collects their
+symbols in the set `%s`, and stores that set in the value of the `a`-transition.
+Inside a firing, the set variable is bound to the values collected so far, and
+after the sweep it is bound to the whole collection.
+
+A set variable that is already bound when the sweep starts is left alone: it
+matches the elements of the set it is bound to, and the sweep fires once per
+matching transition.
 
 ## Errors
 
@@ -685,8 +869,11 @@ The interpreter reports a Quiver error, never an unchecked exception, for:
   or target is not a pair of symbols);
 * an arithmetic operation over a value that is not an integer;
 * an inspection primitive used on a value of the wrong type (`size` and
-  `is-empty` over anything but a sequence, and `targets-from` and
+  `is-empty` over anything but a sequence or a set, and `targets-from` and
   `symbols-from` over anything but a state symbol);
+* a set primitive used on a value of the wrong type (`set` over anything but a
+  sequence or a set, and `union`, `intersection`, `difference` and `contains`
+  over anything but a set);
 * a binding in a value position;
 * a circular `include`;
 * a cycle among the internal transitions that the rules cannot break (see
@@ -735,7 +922,7 @@ The interactive read-eval-print loop loads a program and recognizes inputs again
 it:
 
 ```bash
-java -jar build/libs/quiver-1.2.0.jar
+java -jar build/libs/quiver-1.3.0.jar
 ```
 
 | Command | Meaning |
@@ -798,6 +985,7 @@ include        ::= 'include' string
 pattern        ::= term
 term           ::= symbol
                  | variable
+                 | set-variable
                  | '_'
                  | '(' term ',' term ')'
                  | '$seq' '[' [ atom (',' atom)* ] ']'
@@ -816,6 +1004,11 @@ term           ::= symbol
                  | 'symbols-from' '(' term ')'
                  | 'is-empty' '(' term ')'
                  | 'size' '(' term ')'
+                 | 'set' '(' term ')'
+                 | 'union' '(' term ',' term ')'
+                 | 'intersection' '(' term ',' term ')'
+                 | 'difference' '(' term ',' term ')'
+                 | 'contains' '(' term ',' term ')'
                  | 'clone-automaton' '(' ')'
                  | integer
 
@@ -828,8 +1021,9 @@ atom           ::= symbol
 binding        ::= identifier '<-' term
 symbol         ::= identifier | 'true' | 'false'
 variable       ::= '$' identifier
+set-variable   ::= '%' identifier
 identifier     ::= letter (letter | digit | '$' | '.' | '_' | '/')*
-                 | ('$' | '@' | '.' | '/') (letter | digit | '$' | '.' | '_' | '/')*
+                 | ('$' | '@' | '.' | '/' | '%') (letter | digit | '$' | '.' | '_' | '/')*
 ```
 
 Two remarks on the grammar. The arithmetic operators are left-associative, so

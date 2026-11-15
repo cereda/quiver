@@ -34,6 +34,7 @@ test suite exercises them.
 22. [`nondet-strategy.quiver`: non-determinism with the `all` strategy](#nondet-strategyquiver-non-determinism-with-the-all-strategy)
 23. [`nondet-repeat.quiver`: non-determinism with the `repeat` strategy](#nondet-repeatquiver-non-determinism-with-the-repeat-strategy)
 24. [`counter-machine.quiver`: the simulation of a counter machine](#counter-machinequiver-the-simulation-of-a-counter-machine)
+25. [`set.quiver`: sets and bulk actions](#setquiver-sets-and-bulk-actions)
 
 ## Running an example
 
@@ -41,7 +42,7 @@ Every example is a Quiver source file. The interpreter recognizes one input
 string against it:
 
 ```bash
-java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/abn.quiver aabb
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/abn.quiver aabb
 ```
 
 The command prints `true` when the input is recognized and `false` otherwise.
@@ -49,14 +50,14 @@ The `--trace` option prints what happens at every step on the standard error
 stream, which is how the traces below were produced:
 
 ```bash
-java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/abn.quiver aabb --trace
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/abn.quiver aabb --trace
 ```
 
 The interactive REPL loads the same files and recognizes as many inputs as you
 like:
 
 ```bash
-java -jar build/libs/quiver-1.2.0.jar
+java -jar build/libs/quiver-1.3.0.jar
 ```
 
 ```
@@ -1057,7 +1058,7 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/nondet.quiver a --nondet
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/nondet.quiver a --nondet
 ```
 
 ## `nondet-adaptive.quiver`: per-path adaptive actions
@@ -1122,8 +1123,8 @@ The key point: path q1's retargeting of `(q1,b)` does not affect path q2, and vi
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/nondet-adaptive.quiver ab --nondet
-java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/nondet-adaptive.quiver ac --nondet
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/nondet-adaptive.quiver ab --nondet
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/nondet-adaptive.quiver ac --nondet
 ```
 
 ## `nondet-strategy.quiver`: non-determinism with the `all` strategy
@@ -1238,8 +1239,8 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/nondet-strategy.quiver a --nondet
-java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/nondet-repeat.quiver a --nondet
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/nondet-strategy.quiver a --nondet
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/nondet-repeat.quiver a --nondet
 ```
 
 ## `counter-machine.quiver`: the simulation of a counter machine
@@ -1382,10 +1383,101 @@ computation, and it is accepted with the default budget of 10000 steps. A
 budget that is too small does not accept the input, it fails the run:
 
 ```
-$ java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/counter-machine.quiver aaaaaaz --max-steps 8
+$ java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/counter-machine.quiver aaaaaaz --max-steps 8
 error: Epsilon closure did not terminate: the budget was exhausted after 1 internal steps
 ```
 
 The message names the closure, because that is where the run was: the six
 symbols of the loading phase and the marker took seven units of the budget, so
 the closure took one internal step and the budget was gone.
+
+## `set.quiver`: sets and bulk actions
+
+The last example shows the set algebra: a set is a value that a program
+manipulates, and a set variable is a name that denotes the elements of that
+set, so that one clause acts on many transitions at once.
+
+```quiver
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, set([b, c]))
+  }
+}
+
+# The first 'a' loads the alphabet. The set variable binds the set of the
+# transition's value, and the insertion of a transition whose symbol is that
+# set inserts one transition per symbol.
+(q0, a) -> ($to, %syms) => {
+  _ => emit(%syms)
+  _ => (q0, %syms) -> (q1, 0)
+}
+
+# The automaton collects the symbols it can read into a set, and keeps the set
+# in the value of the transition. The set variable of a sweep collects the
+# values it matches across the firings, so the sweep needs no body to collect
+# them.
+(q0, b) -> ($to, $n) => {
+  each (q0, %s) -> ($t, $v) => { }
+  _ => emit(%s)
+  _ => (q0, b) -> ($to, %s)
+}
+```
+
+The automaton starts with a single transition, whose value is the set
+`{b, c}`: the alphabet the automaton is able to read.
+
+The first rule fires on the `a`-transition. Its pattern holds the set variable
+`%syms`, which matches the **set** in the value of the transition and binds
+it. The clause `_ => emit(%syms)` prints that set, and the clause
+`_ => (q0, %syms) -> (q1, 0)` is a **bulk action**: the symbol position of the
+inserted transition is the set `{b, c}`, so the insertion puts one transition
+per element of the set.
+
+The second rule fires on the `b`-transition. Its body holds a **sweep** whose
+pattern holds the set variable `%s`. A sweep matches its pattern against every
+transition of the automaton, and a set variable in a sweep **collects** the
+values it matches instead of binding one of them: the sweep fires once per
+transition that leaves `q0`, and the values it matches are gathered in a set.
+The body of the sweep is empty, because the collection is the whole point of
+the sweep. The clause that follows it prints the collection, and the last
+clause stores it in the value of the `b`-transition.
+
+The trace of `ab` shows the whole program:
+
+```
+trace step state=q0 symbol=a transition=(q0,a)->(q0,{b,c})
+{b,c}
+trace   insert transition (q0,b)->(q1,0)
+trace   insert transition (q0,c)->(q1,0)
+trace   rule fired: (q0,a) -> ($to,%syms)
+trace step state=q0 symbol=b transition=(q0,b)->(q1,0)
+trace   sweep: (q0,%s) -> ($t,$v) on (q0,a)->(q0,{b,c})
+trace   sweep: (q0,%s) -> ($t,$v) on (q0,b)->(q1,0)
+trace   sweep: (q0,%s) -> ($t,$v) on (q0,c)->(q1,0)
+{a,b,c}
+trace   insert transition (q0,b)->(q1,{a,b,c})
+trace   rule fired: (q0,b) -> ($to,$n)
+true
+```
+
+The first step prints the alphabet, `{b, c}`, and inserts the two transitions
+the bulk action denotes. The second step sweeps the three transitions that
+leave `q0`: the `a`-transition, whose value is the set `{b, c}`, the
+`b`-transition and the `c`-transition, whose values are `0`. The sweep collects
+the symbols of the three transitions, `{a, b, c}`, and the last clause stores
+that set in the value of the `b`-transition.
+
+| Input | Result |
+|---|---|
+| `ab` | `true` (the `b` is one of the symbols of the alphabet) |
+| `ac` | `true` (the `c` is one of the symbols of the alphabet) |
+| `ad` | `false` (there is no transition out of `q0` on `d`) |
+| `a` | `false` (the input ends before the alphabet is read) |
+
+Run with:
+
+```bash
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/set.quiver ab --trace
+```

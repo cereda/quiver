@@ -110,6 +110,16 @@ fun matchTerm(expr: Expr, subject: Value, env: Env): Env? = when (expr) {
 
     is Expr.Size -> null
 
+    is Expr.Set -> null
+
+    is Expr.Union -> null
+
+    is Expr.Intersection -> null
+
+    is Expr.Difference -> null
+
+    is Expr.Contains -> null
+
     is Expr.CloneAutomaton -> null
 
     is Expr.Wildcard -> env
@@ -118,17 +128,21 @@ fun matchTerm(expr: Expr, subject: Value, env: Env): Env? = when (expr) {
 /**
  * The name a binding introduces in the environment.
  *
- * Variables are the `$`-prefixed names, so the binding `x <- t` (as well as
- * the explicit `$x <- t`) introduces the variable `$x`.
+ * Variables are the `$`-prefixed names and the set variables are the
+ * `%`-prefixed ones, so the binding `x <- t` (as well as the explicit
+ * `$x <- t`) introduces the variable `$x`, and the binding `%x <- t`
+ * introduces the set variable `%x`.
  */
-private fun bindingKey(varName: String): String = if (varName.startsWith("$")) varName else "$$varName"
+private fun bindingKey(varName: String): String =
+    if (varName.startsWith("$") || varName.startsWith("%")) varName else "$$varName"
 
 /**
  * Matches a symbol-name pattern against a subject.
  *
  * `_` is the wildcard; `$`-prefixed names are variables (bound on first
- * occurrence, occurrence-checked afterwards); any other name must match a
- * literal symbol exactly.
+ * occurrence, occurrence-checked afterwards); `%`-prefixed names are set
+ * variables (see [matchSetVariable]); any other name must match a literal
+ * symbol exactly.
  *
  * @return the extended environment, or null when the match fails.
  */
@@ -147,9 +161,41 @@ private fun matchSym(name: String, subject: Value, env: Env): Env? = when {
         }
     }
 
+    name.startsWith("%") -> matchSetVariable(name, subject, env)
+
     // literal symbol: match exactly
     else -> if (subject is Value.Symbol && subject.name == name) env else null
 }
+
+/**
+ * Matches a set variable against a subject.
+ *
+ * A set variable that is not bound yet matches a **set** and binds it: the
+ * set variables of a rule pattern name the set values a program manipulates.
+ *
+ * A set variable that is already bound matches the **elements** of the set it
+ * is bound to: the clause of a rule may then denote a set of transitions, and
+ * the action it performs applies to every one of them.
+ *
+ * @param name the name of the set variable.
+ * @param subject the value being matched.
+ * @param env the bindings accumulated so far.
+ * @return the extended environment, or null when the match fails.
+ */
+private fun matchSetVariable(name: String, subject: Value, env: Env): Env? {
+    val bound = env[name]
+    return when {
+        bound == null -> if (subject is Value.Set) env + (name to subject) else null
+
+        else -> {
+            val members = (bound as? Value.Set)?.items
+            if (members != null && members.contains(subject)) env else null
+        }
+    }
+}
+
+/** True when a name is the name of a set variable. */
+private fun isSetVariable(name: String): Boolean = name.startsWith("%")
 
 /** Matches [patterns] elementwise against [subjects]; see [matchTerm]. */
 private fun matchList(patterns: List<Expr>, subjects: List<Value>, env: Env): Env? {
@@ -228,24 +274,111 @@ fun evalExpr(expr: Expr, env: Env, currentState: String, automaton: Automaton): 
 
     is Expr.StateRef -> Value.Symbol(currentState)
 
-    is Expr.TransitionsFrom -> {
-        val stateVal = evalExpr(expr.state, env, currentState, automaton)
-        if (stateVal !is Value.Symbol) throw QuiverException(0, 0, "transitions-from expects a state symbol")
-        val stateName = stateVal.name
-        val trans = automaton.transitions.filter { it.from == stateName }
-        Value.Seq(
-            trans.map { t ->
-                Value.Pair(Value.Symbol(t.symbol), Value.Symbol(t.to))
-            },
-        )
-    }
+    is Expr.TransitionsFrom -> evalTransitionsFrom(expr.state, env, currentState, automaton)
 
     is Expr.TargetsFrom, is Expr.SymbolsFrom, is Expr.IsEmpty, is Expr.Size ->
         evalInspection(expr, env, currentState, automaton)
 
+    is Expr.Set, is Expr.Union, is Expr.Intersection, is Expr.Difference, is Expr.Contains ->
+        evalSetPrimitive(expr, env, currentState, automaton)
+
     is Expr.CloneAutomaton -> {
         Value.Automaton(automaton.clone())
     }
+}
+
+/**
+ * Evaluates the `transitions-from` primitive, which reads the transitions
+ * that leave a state.
+ *
+ * @param state the expression denoting the state.
+ * @param env the variable bindings in scope.
+ * @param currentState the automaton's current state.
+ * @param automaton the automaton being rewritten.
+ * @return the transitions of the state, as a sequence of (symbol, target) pairs.
+ * @throws QuiverException when the expression does not denote a state symbol.
+ */
+private fun evalTransitionsFrom(state: Expr, env: Env, currentState: String, automaton: Automaton): Value {
+    val stateVal = evalExpr(state, env, currentState, automaton)
+    if (stateVal !is Value.Symbol) throw QuiverException(0, 0, "transitions-from expects a state symbol")
+    val stateName = stateVal.name
+    val trans = automaton.transitions.filter { it.from == stateName }
+    return Value.Seq(
+        trans.map { t ->
+            Value.Pair(Value.Symbol(t.symbol), Value.Symbol(t.to))
+        },
+    )
+}
+
+/**
+ * Evaluates the set primitives, which build and combine sets of values.
+ *
+ * @param expr the primitive to evaluate.
+ * @param env the variable bindings in scope.
+ * @param currentState the automaton's current state.
+ * @param automaton the automaton being rewritten.
+ * @return the value of the primitive.
+ * @throws QuiverException when the primitive is applied to a value of the
+ *   wrong type.
+ */
+private fun evalSetPrimitive(expr: Expr, env: Env, currentState: String, automaton: Automaton): Value = when (expr) {
+    is Expr.Set -> {
+        val value = evalExpr(expr.expr, env, currentState, automaton)
+        when (value) {
+            is Value.Set -> value
+            is Value.Seq -> Value.Set(value.items.toCollection(LinkedHashSet()))
+            else -> throw QuiverException(0, 0, "set expects a sequence or a set value")
+        }
+    }
+
+    is Expr.Union -> {
+        val left = evalSet(expr.left, env, currentState, automaton, "union")
+        val right = evalSet(expr.right, env, currentState, automaton, "union")
+        Value.Set(LinkedHashSet(left).apply { addAll(right) })
+    }
+
+    is Expr.Intersection -> {
+        val left = evalSet(expr.left, env, currentState, automaton, "intersection")
+        val right = evalSet(expr.right, env, currentState, automaton, "intersection")
+        Value.Set(left.filter { it in right }.toCollection(LinkedHashSet()))
+    }
+
+    is Expr.Difference -> {
+        val left = evalSet(expr.left, env, currentState, automaton, "difference")
+        val right = evalSet(expr.right, env, currentState, automaton, "difference")
+        Value.Set(left.filter { it !in right }.toCollection(LinkedHashSet()))
+    }
+
+    is Expr.Contains -> {
+        val members = evalSet(expr.set, env, currentState, automaton, "contains")
+        val element = evalExpr(expr.element, env, currentState, automaton)
+        Value.BoolVal(members.contains(element))
+    }
+
+    else -> throw QuiverException(0, 0, "Not a set primitive")
+}
+
+/**
+ * Evaluates an expression that must denote a set.
+ *
+ * @param expr the expression to evaluate.
+ * @param env the variable bindings in scope.
+ * @param currentState the automaton's current state.
+ * @param automaton the automaton being rewritten.
+ * @param primitive the name of the primitive, for the error message.
+ * @return the elements of the set.
+ * @throws QuiverException when the expression does not denote a set.
+ */
+private fun evalSet(
+    expr: Expr,
+    env: Env,
+    currentState: String,
+    automaton: Automaton,
+    primitive: String,
+): kotlin.collections.Set<Value> {
+    val value = evalExpr(expr, env, currentState, automaton)
+    if (value !is Value.Set) throw QuiverException(0, 0, "$primitive expects a set value")
+    return value.items
 }
 
 /**
@@ -275,14 +408,22 @@ private fun evalInspection(expr: Expr, env: Env, currentState: String, automaton
 
     is Expr.IsEmpty -> {
         val value = evalExpr(expr.expr, env, currentState, automaton)
-        if (value !is Value.Seq) throw QuiverException(0, 0, "is-empty expects a sequence value")
-        Value.BoolVal(value.items.isEmpty())
+        val empty = when (value) {
+            is Value.Seq -> value.items.isEmpty()
+            is Value.Set -> value.items.isEmpty()
+            else -> throw QuiverException(0, 0, "is-empty expects a sequence or a set value")
+        }
+        Value.BoolVal(empty)
     }
 
     is Expr.Size -> {
         val value = evalExpr(expr.expr, env, currentState, automaton)
-        if (value !is Value.Seq) throw QuiverException(0, 0, "size expects a sequence value")
-        Value.IntVal(BigInteger.valueOf(value.items.size.toLong()))
+        val count = when (value) {
+            is Value.Seq -> value.items.size
+            is Value.Set -> value.items.size
+            else -> throw QuiverException(0, 0, "size expects a sequence or a set value")
+        }
+        Value.IntVal(BigInteger.valueOf(count.toLong()))
     }
 
     else -> throw QuiverException(0, 0, "Not an inspection primitive")
@@ -510,8 +651,8 @@ private fun reresolveTo(automaton: Automaton, state: String, symbol: String, fal
  * Evaluates an optional guard expression with the given environment.
  * Returns true if there is no guard. Otherwise, evaluates the guard and
  * returns its truthiness: [Value.BoolVal] follows its boolean, [Value.IntVal]
- * is false only when zero, [Value.Seq] is false only when empty, and all other
- * values are truthy.
+ * is false only when zero, [Value.Seq] and [Value.Set] are false only when
+ * empty, and all other values are truthy.
  *
  * @param guard the guard expression, or null for "always passes".
  * @param env the bindings from the rule's pattern match.
@@ -525,6 +666,7 @@ private fun guardPasses(guard: Expr?, env: Env, currentState: String, automaton:
         is Value.BoolVal -> result.b
         is Value.IntVal -> result.n.signum() != 0
         is Value.Seq -> result.items.isNotEmpty()
+        is Value.Set -> result.items.isNotEmpty()
         else -> true
     }
 }
@@ -582,7 +724,6 @@ private fun applyClause(
             // The sweep's pattern is matched against the transitions of the
             // automaton, so the subject of the rule plays no part in it.
             applySweep(clause.left, cr.clauses, env, automaton, currentState, trace)
-            env
         } else {
             // Refine the environment by matching the clause's left pattern; a
             // clause that does not match the subject does not apply.
@@ -602,7 +743,7 @@ private fun applyClause(
                     is ClauseRight.Rhs ->
                         // => expr or left => expr : insert/update a transition.
                         insertTransition(
-                            transition(evalExpr(cr.expr, currentEnv, currentState, automaton)),
+                            transitions(evalExpr(cr.expr, currentEnv, currentState, automaton)),
                             automaton,
                             trace,
                         )
@@ -631,12 +772,20 @@ private fun applyClause(
  * with the bindings of the sweep's pattern: the bindings of one firing do not
  * leak into the next.
  *
+ * A **set variable** of the pattern is the exception: it collects the values
+ * it matches across the firings, and the collection is a set. The pattern is
+ * rewritten before it is matched, so that the set variable matches the value
+ * at its position instead of a set. Inside a firing, the set variable is
+ * bound to the values collected so far; after the sweep, it is bound to the
+ * whole collection, which the clauses that follow the sweep may use.
+ *
  * @param pattern the pattern the sweep matches against the transitions.
  * @param clauses the clauses the sweep runs once per matching transition.
  * @param env the bindings in scope where the sweep appears.
  * @param automaton the automaton the sweep reads and mutates.
  * @param currentState the automaton's current state, for `$state`.
  * @param trace when true, prints each firing to stderr.
+ * @return the environment extended with the sets the sweep collected.
  */
 private fun applySweep(
     pattern: Expr,
@@ -645,19 +794,90 @@ private fun applySweep(
     automaton: Automaton,
     currentState: String,
     trace: Boolean,
-) {
+): Env {
+    val variables = mutableMapOf<String, String>()
+    val rewritten = rewriteSetVariables(pattern, env, variables)
     val firings =
         automaton.transitions.mapNotNull { transition ->
             val term = transitionSubject(transition)
-            matchTerm(pattern, term, env)?.let { firingEnv -> firingEnv to term }
+            matchTerm(rewritten, term, env)?.let { firingEnv -> firingEnv to term }
         }
+    val collected = variables.keys.associateWith { LinkedHashSet<Value>() }.toMutableMap()
     for ((firingEnv, term) in firings) {
         if (trace) {
             System.err.println("trace   sweep: ${exprToString(pattern)} on ${subjectToString(term)}")
         }
-        applyClauses(clauses, term, firingEnv, automaton, currentState, trace)
+        for ((setVar, freshVar) in variables) {
+            firingEnv[freshVar]?.let { value -> collected.getValue(setVar).add(value) }
+        }
+        // The set variables are bound to the values collected so far.
+        val firingScope = env + collected.mapValues { (_, items) -> Value.Set(items) } + firingEnv
+        applyClauses(clauses, term, firingScope, automaton, currentState, trace)
     }
+    return env + collected.mapValues { (_, items) -> Value.Set(items) }
 }
+
+/**
+ * Rewrites the set variables of a sweep pattern, so that the sweep collects
+ * the values they match instead of binding them.
+ *
+ * A set variable that is already bound is left alone: it matches the elements
+ * of the set it is bound to, as any other bound set variable does.
+ *
+ * @param expr the expression to rewrite.
+ * @param env the bindings in scope, which the rewrite consults.
+ * @param variables the fresh variables that stand for the set variables,
+ *   filled by the rewrite.
+ * @return the rewritten expression.
+ */
+private fun rewriteSetVariables(expr: Expr, env: Env, variables: MutableMap<String, String>): Expr = when (expr) {
+    is Expr.Sym -> {
+        if (isSetVariable(expr.name) && expr.name !in env) {
+            val fresh = variables.getOrPut(expr.name) { freshVariable(expr.name, variables.size) }
+            Expr.Sym(fresh)
+        } else {
+            expr
+        }
+    }
+
+    is Expr.Bind -> {
+        val inner = rewriteSetVariables(expr.expr, env, variables)
+        if (isSetVariable(expr.varName) && expr.varName !in env) {
+            val fresh = variables.getOrPut(expr.varName) { freshVariable(expr.varName, variables.size) }
+            Expr.Bind(fresh, inner)
+        } else {
+            Expr.Bind(expr.varName, inner)
+        }
+    }
+
+    is Expr.Pair ->
+        Expr.Pair(
+            rewriteSetVariables(expr.left, env, variables),
+            rewriteSetVariables(expr.right, env, variables),
+        )
+
+    is Expr.Seq -> Expr.Seq(expr.items.map { item -> rewriteSetVariables(item, env, variables) })
+
+    is Expr.Arrow ->
+        Expr.Arrow(
+            rewriteSetVariables(expr.left, env, variables),
+            rewriteSetVariables(expr.right, env, variables),
+        )
+
+    else -> expr
+}
+
+/**
+ * The name of the fresh variable that stands for a set variable in a sweep.
+ *
+ * The name carries a character an identifier may not contain, so it cannot
+ * clash with a variable of the program.
+ *
+ * @param name the name of the set variable.
+ * @param index the number of the set variables collected so far.
+ * @return the name of the fresh variable.
+ */
+private fun freshVariable(name: String, index: Int): String = "$${name.removePrefix("%")}#$index"
 
 /**
  * The subject term of a transition: `((from, symbol), (to, value))`, the shape
@@ -690,26 +910,38 @@ private fun subjectToString(subject: Value): String =
     }
 
 /** Removes every transition with the given (from, symbol) key, when present. */
-private fun removeTransition(key: Pair<String, String>?, automaton: Automaton, trace: Boolean) {
+private fun removeTransition(key: RemovalKey?, automaton: Automaton, trace: Boolean) {
     if (key == null) return
-    if (trace) System.err.println("trace   remove transition (${key.first},${key.second})->*")
+    if (trace) {
+        System.err.println("trace   remove transition (${key.from},${symbolsToString(key.symbols)})->*")
+    }
     automaton.transitions.removeAll {
-        it.from == key.first && it.symbol == key.second
+        it.from == key.from && it.symbol in key.symbols
     }
 }
 
-/** Inserts a transition, when the evaluated value denotes one. */
-private fun insertTransition(t: TransKey?, automaton: Automaton, trace: Boolean) {
-    if (t == null) return
+/**
+ * Inserts the transitions, when the evaluated value denotes them.
+ *
+ * The transitions that share a key with the ones being inserted are removed
+ * first, so that a rule-driven insert keeps the path a proper function. When
+ * the insertion denotes several transitions with the same key, the bulk
+ * action of the clause keeps them all.
+ */
+private fun insertTransition(ts: List<TransKey>, automaton: Automaton, trace: Boolean) {
+    if (ts.isEmpty()) return
     if (trace) {
-        System.err.println(
-            "trace   insert transition (${t.from},${t.sym})->(${t.to},${valueToString(t.value)})",
-        )
+        for (t in ts) {
+            System.err.println(
+                "trace   insert transition (${t.from},${t.sym})->(${t.to},${valueToString(t.value)})",
+            )
+        }
     }
-    // Replace any existing transition with the same key within this path's
-    // automaton, so a rule-driven insert keeps the path a proper function.
-    automaton.transitions.removeAll { it.from == t.from && it.symbol == t.sym }
-    automaton.addTransition(t.from, t.sym, t.to, t.value)
+    val keys = ts.map { it.from to it.sym }.toSet()
+    automaton.transitions.removeAll { it.from to it.symbol in keys }
+    for (t in ts) {
+        automaton.addTransition(t.from, t.sym, t.to, t.value)
+    }
 }
 
 /**
@@ -718,8 +950,43 @@ private fun insertTransition(t: TransKey?, automaton: Automaton, trace: Boolean)
  */
 private data class TransKey(val from: String, val sym: String, val to: String, val value: Value)
 
-/** True when [v] is a pair whose both sides are symbols. */
-private fun isSymbolPair(v: Value): Boolean = v is Value.Pair && v.left is Value.Symbol && v.right is Value.Symbol
+/**
+ * The key of the transitions a removal clause denotes: the source state and
+ * the symbols of the transitions, which are several when the clause denotes a
+ * set of symbols.
+ *
+ * @property from the source state name.
+ * @property symbols the symbols of the transitions to remove.
+ */
+private data class RemovalKey(val from: String, val symbols: List<String>)
+
+/**
+ * Renders a list of symbols, as the trace does: a single symbol is written
+ * alone, and several symbols are written as a set.
+ *
+ * @param symbols the symbols to render.
+ * @return the rendering of the symbols.
+ */
+private fun symbolsToString(symbols: List<String>): String =
+    if (symbols.size == 1) symbols.first() else symbols.joinToString(",", prefix = "{", postfix = "}")
+
+/**
+ * The names a value denotes in a symbol position: the name of the symbol
+ * itself, or the names of the elements of a set.
+ *
+ * @param v the value in the symbol position.
+ * @return the names, or null when the value is neither a symbol nor a set of
+ *   symbols.
+ */
+private fun symbolNames(v: Value): List<String>? {
+    val elements: List<Value> = when (v) {
+        is Value.Symbol -> listOf(v)
+        is Value.Set -> v.items.toList()
+        else -> return null
+    }
+    val names = elements.mapNotNull { element -> (element as? Value.Symbol)?.name }
+    return if (names.size == elements.size) names else null
+}
 
 /**
  * Extracts the (from, symbol) key from a value that denotes a transition.
@@ -727,44 +994,48 @@ private fun isSymbolPair(v: Value): Boolean = v is Value.Pair && v.left is Value
  * The value is the shape of the subject of a step, that is the arrow
  * `((from, symbol), (to, value))`: the left-hand side of a clause is matched
  * against that subject, so it evaluates to that shape when it applies.
+ *
+ * The symbol may be a set, in which case the key denotes every transition
+ * whose symbol belongs to the set: this is the bulk removal of a clause.
  */
-private fun transitionKey(v: Value): Pair<String, String>? = when {
-    v is Value.Pair && isSymbolPair(v.left) -> {
-        val l = v.left as Value.Pair
-        Pair((l.left as Value.Symbol).name, (l.right as Value.Symbol).name)
-    }
-
-    else -> null
+private fun transitionKey(v: Value): RemovalKey? {
+    val key = (v as? Value.Pair)?.left
+    val from = ((key as? Value.Pair)?.left as? Value.Symbol)?.name
+    val symbols = (key as? Value.Pair)?.right?.let { symbolNames(it) }
+    return if (from != null && symbols != null) RemovalKey(from, symbols) else null
 }
 
 /**
- * Extracts a full transition `(from, symbol) -> (to, value)` from a value.
+ * Extracts the full transitions `(from, symbol) -> (to, value)` from a value.
+ *
+ * The symbol and the target state may be sets, in which case the value
+ * denotes several transitions: one per element of the set, and one per
+ * combination of the two sets when both of them are sets. This is the bulk
+ * insertion of a clause.
  */
-private fun transition(v: Value): TransKey? = when {
-    v is Value.Pair && isSymbolPair(v.left) && v.right is Value.Pair -> {
-        val l = v.left as Value.Pair
-        val r = v.right
-        if (r.left is Value.Symbol) {
-            TransKey(
-                (l.left as Value.Symbol).name,
-                (l.right as Value.Symbol).name,
-                r.left.name,
-                r.right,
-            )
-        } else {
-            null
-        }
+private fun transitions(v: Value): List<TransKey> {
+    val key = (v as? Value.Pair)?.left
+    val target = (v as? Value.Pair)?.right
+    val from = ((key as? Value.Pair)?.left as? Value.Symbol)?.name
+    val symbols = (key as? Value.Pair)?.right?.let { symbolNames(it) }
+    val targets = (target as? Value.Pair)?.left?.let { symbolNames(it) }
+    if (from == null || symbols == null || targets == null) return emptyList()
+    return symbols.flatMap { symbol ->
+        targets.map { state -> TransKey(from, symbol, state, target.right) }
     }
-
-    else -> null
 }
 
 /**
  * Returns the top-level [Value.Type] that a pattern expects to match, or null
  * when the pattern is a wildcard (compatible with any subject type).
  */
-private fun patternType(expr: Expr): Value.Type? = when (expr) {
-    is Expr.Sym -> if (expr.name == "_" || expr.name.startsWith("$")) null else Value.Type.SYMBOL
+internal fun patternType(expr: Expr): Value.Type? = when (expr) {
+    is Expr.Sym ->
+        when {
+            expr.name == "_" || expr.name.startsWith("$") -> null
+            expr.name.startsWith("%") -> Value.Type.SET
+            else -> Value.Type.SYMBOL
+        }
 
     is Expr.Pair -> Value.Type.PAIR
 
@@ -800,6 +1071,16 @@ private fun patternType(expr: Expr): Value.Type? = when (expr) {
 
     is Expr.Size -> null
 
+    is Expr.Set -> null
+
+    is Expr.Union -> null
+
+    is Expr.Intersection -> null
+
+    is Expr.Difference -> null
+
+    is Expr.Contains -> null
+
     else -> null
 }
 
@@ -833,6 +1114,9 @@ internal object HeadKeys {
     /** Key of function-valued patterns and subjects (automata map here too). */
     const val FUNC = "Func"
 
+    /** Key of set-valued patterns and subjects. */
+    const val SET = "Set"
+
     /** Key of patterns that match any subject type (wildcards, variables). */
     const val ANY = "Any"
 
@@ -840,7 +1124,7 @@ internal object HeadKeys {
      * The head keys a subject may carry: every one of them has a bucket in
      * the rule index.
      */
-    val SUBJECT_KEYS = listOf(SYMBOL, PAIR, SEQ, INT, BOOL, FUNC)
+    val SUBJECT_KEYS = listOf(SYMBOL, PAIR, SEQ, INT, BOOL, FUNC, SET)
 }
 
 /**
@@ -853,23 +1137,55 @@ internal object HeadKeys {
  * binds, so its head key is the head key of that term.
  */
 internal fun patternHeadKey(pattern: Expr): String = when (pattern) {
-    is Expr.Sym -> if (pattern.name == "_" || pattern.name.startsWith("$")) HeadKeys.ANY else HeadKeys.SYMBOL
+    is Expr.Sym ->
+        when {
+            pattern.name == "_" || pattern.name.startsWith("$") -> HeadKeys.ANY
+            pattern.name.startsWith("%") -> HeadKeys.SET
+            else -> HeadKeys.SYMBOL
+        }
+
     is Expr.Pair -> HeadKeys.PAIR
+
     is Expr.Seq -> HeadKeys.SEQ
+
     is Expr.Arrow -> HeadKeys.PAIR
+
     is Expr.Plus -> HeadKeys.INT
+
     is Expr.Minus -> HeadKeys.INT
+
     is Expr.IntLit -> HeadKeys.INT
+
     is Expr.BoolLit -> HeadKeys.BOOL
+
     is Expr.Wildcard -> HeadKeys.ANY
+
     is Expr.Bind -> patternHeadKey(pattern.expr)
+
     is Expr.Fun -> HeadKeys.FUNC
+
     is Expr.App -> HeadKeys.FUNC
+
     is Expr.Emit -> HeadKeys.ANY
+
     is Expr.TargetsFrom -> HeadKeys.ANY
+
     is Expr.SymbolsFrom -> HeadKeys.ANY
+
     is Expr.IsEmpty -> HeadKeys.ANY
+
     is Expr.Size -> HeadKeys.ANY
+
+    is Expr.Set -> HeadKeys.ANY
+
+    is Expr.Union -> HeadKeys.ANY
+
+    is Expr.Intersection -> HeadKeys.ANY
+
+    is Expr.Difference -> HeadKeys.ANY
+
+    is Expr.Contains -> HeadKeys.ANY
+
     else -> HeadKeys.ANY
 }
 
@@ -884,6 +1200,7 @@ internal fun subjectHeadKey(subject: Value): String = when (subject) {
     is Value.BoolVal -> HeadKeys.BOOL
     is Value.Func -> HeadKeys.FUNC
     is Value.Automaton -> HeadKeys.FUNC
+    is Value.Set -> HeadKeys.SET
 }
 
 /**
@@ -951,6 +1268,16 @@ internal fun exprToString(expr: Expr): String = when (expr) {
     is Expr.IsEmpty -> "is-empty(${exprToString(expr.expr)})"
 
     is Expr.Size -> "size(${exprToString(expr.expr)})"
+
+    is Expr.Set -> "set(${exprToString(expr.expr)})"
+
+    is Expr.Union -> "union(${exprToString(expr.left)},${exprToString(expr.right)})"
+
+    is Expr.Intersection -> "intersection(${exprToString(expr.left)},${exprToString(expr.right)})"
+
+    is Expr.Difference -> "difference(${exprToString(expr.left)},${exprToString(expr.right)})"
+
+    is Expr.Contains -> "contains(${exprToString(expr.set)},${exprToString(expr.element)})"
 
     else -> expr.toString()
 }

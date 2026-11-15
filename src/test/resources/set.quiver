@@ -1,0 +1,35 @@
+# Quiver example: sets of symbols and bulk actions.
+#
+# The automaton carries the alphabet of the input as a set of symbols, and the
+# rules use that set to build the transitions that read the input.
+#
+# A set variable, written %x, names a set: it binds a set value in the
+# pattern of a rule, and it denotes the elements of the set once it is bound.
+# An insertion whose symbol is a set is a bulk action: it inserts one
+# transition per element of the set.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q0, set([b, c]))
+  }
+}
+
+# The first 'a' loads the alphabet. The set variable binds the set of the
+# transition's value, and the insertion of a transition whose symbol is that
+# set inserts one transition per symbol.
+(q0, a) -> ($to, %syms) => {
+  _ => emit(%syms)
+  _ => (q0, %syms) -> (q1, 0)
+}
+
+# The automaton collects the symbols it can read into a set, and keeps the set
+# in the value of the transition. The set variable of a sweep collects the
+# values it matches across the firings, so the sweep needs no body to collect
+# them.
+(q0, b) -> ($to, $n) => {
+  each (q0, %s) -> ($t, $v) => { }
+  _ => emit(%s)
+  _ => (q0, b) -> ($to, %s)
+}

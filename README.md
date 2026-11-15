@@ -1,7 +1,7 @@
 # Quiver: a term-rewriting language for adaptive automata
 
 A Kotlin/JVM implementation of **Quiver**, a type-safe term-rewriting language
-for adaptive automata. The current release is **1.2.0**.
+for adaptive automata. The current release is **1.3.0**.
 
 An **adaptive automaton** is a finite automaton whose transition function may change
 while it runs. Quiver describes such an automaton as a set of rewrite rules: each rule
@@ -34,9 +34,9 @@ The build produces a self-contained executable jar (the shadow jar replaces the 
 jar in `build/libs`), so the interpreter runs with no Gradle and no classpath:
 
 ```bash
-java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/rec.quiver aabbcc
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/rec.quiver aabbcc
 # the same jar starts the interactive REPL when it gets no arguments:
-java -jar build/libs/quiver-1.2.0.jar
+java -jar build/libs/quiver-1.3.0.jar
 ```
 
 The command prints `true` when the input is recognized and `false` otherwise; an
@@ -68,7 +68,7 @@ The executable jar starts the interactive REPL when it is run without arguments.
 ### REPL
 
 ```bash
-java -jar build/libs/quiver-1.2.0.jar
+java -jar build/libs/quiver-1.3.0.jar
 ```
 
 While developing, `./gradlew runRepl` starts the same REPL from the sources.
@@ -107,6 +107,7 @@ step, with the trace of a concrete input.
 | [`primitives.quiver`](src/main/resources/primitives.quiver) | `$state`, `transitions-from` and `clone-automaton` |
 | [`sweep.quiver`](src/main/resources/sweep.quiver) | a sweep: one action applied to many transitions at once |
 | [`inspect.quiver`](src/main/resources/inspect.quiver) | `targets-from`, `symbols-from`, `size` and `is-empty` |
+| [`set.quiver`](src/main/resources/set.quiver) | the set algebra: sets, set variables and bulk actions |
 | [`counter-machine.quiver`](src/main/resources/counter-machine.quiver) | the simulation of a counter machine, with internal transitions |
 | [`closure.quiver`](src/main/resources/closure.quiver) | a closure stored as a transition value |
 | [`strategy.quiver`](src/main/resources/strategy.quiver) | a named rewriting strategy |
@@ -125,8 +126,8 @@ step, with the trace of a concrete input.
 Each of them is a complete program:
 
 ```bash
-java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/abn.quiver aabb  # true
-java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/abn.quiver aab   # false
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/abn.quiver aabb  # true
+java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/abn.quiver aab   # false
 ```
 
 This interpreter defines the precise operational semantics, notably the matching
@@ -147,6 +148,15 @@ documents them in the [language reference](docs/language-reference.md).
 * **Sweeps:** `each <pattern> => { ... }` runs a block of clauses once per
   matching transition of the automaton, with the bindings of the pattern per
   firing
+* **Sets:** `set(seq)`, `union(a, b)`, `intersection(a, b)`,
+  `difference(a, b)` and `contains(a, b)` build and query sets of values, and
+  `size` and `is-empty` accept them
+* **Set variables:** a name that starts with `%` matches a set, and denotes its
+  elements once it is bound; the set variable of a sweep collects the values it
+  matches across the firings
+* **Bulk actions:** an insertion whose symbol (or target state) is a set
+  inserts one transition per element of the set, and a removal whose symbol is
+  a set removes every transition under those symbols
 * **Bindings:** `x <- t` matches `t` and binds the matched term to `$x`
 * **Arithmetic:** `y + 1`, `y - 1`, over arbitrary-precision integers, so the
   counters a program carries are unbounded
@@ -168,7 +178,7 @@ documents them in the [language reference](docs/language-reference.md).
 ## Build, tests and quality tooling
 
 ```bash
-./gradlew test          # the test suite (428 tests)
+./gradlew test          # the test suite (481 tests)
 ./gradlew detekt        # the static analysis
 ./gradlew spotlessCheck # the formatting and the license headers
 ./gradlew koverVerify   # the coverage floors

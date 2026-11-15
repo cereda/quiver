@@ -555,19 +555,19 @@ class QuiverInterpreterTest {
     }
 
     @Test
-    fun `is-empty rejects a value that is not a sequence`() {
+    fun `is-empty rejects a value that is not a sequence nor a set`() {
         val automaton = sweepAutomaton()
         val error =
             assertFailsWith<QuiverException> { evalExpr(Expr.IsEmpty(Expr.IntLit(1)), emptyMap(), "q0", automaton) }
-        assertContains(error.message ?: "", "is-empty expects a sequence value")
+        assertContains(error.message ?: "", "is-empty expects a sequence or a set value")
     }
 
     @Test
-    fun `size rejects a value that is not a sequence`() {
+    fun `size rejects a value that is not a sequence nor a set`() {
         val automaton = sweepAutomaton()
         val error =
             assertFailsWith<QuiverException> { evalExpr(Expr.Size(Expr.IntLit(1)), emptyMap(), "q0", automaton) }
-        assertContains(error.message ?: "", "size expects a sequence value")
+        assertContains(error.message ?: "", "size expects a sequence or a set value")
     }
 
     @Test
