@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package br.usp.poli.lta.cereda.quiver
 
+import java.math.BigInteger
+
 /**
  * A value manipulated by the Quiver term-rewriting interpreter.
  *
@@ -60,9 +62,19 @@ sealed class Value {
     /**
      * An integer value, produced by integer literals and arithmetic.
      *
+     * The value is an arbitrary-precision integer: the counters a program
+     * carries are unbounded, and a run may grow them as far as it needs.
+     *
      * @property n the integer's value.
      */
-    data class IntVal(val n: Int) : Value()
+    data class IntVal(val n: BigInteger) : Value() {
+        /**
+         * Builds an integer value from a machine integer.
+         *
+         * @param n the integer's value.
+         */
+        constructor(n: Int) : this(BigInteger.valueOf(n.toLong()))
+    }
 
     /**
      * A boolean value (`true` or `false`), typically the result of recognition.
@@ -118,7 +130,7 @@ sealed class Value {
      *
      * @throws QuiverException when the value is not an integer.
      */
-    fun asInt(): Int = (this as? IntVal)?.n ?: throw typeError("integer")
+    fun asInt(): BigInteger = (this as? IntVal)?.n ?: throw typeError("integer")
 
     /**
      * Returns this value as a [BoolVal].
@@ -281,9 +293,19 @@ sealed class Expr {
     /**
      * An integer literal such as `1`.
      *
+     * The literal is an arbitrary-precision integer, so a program may write a
+     * counter's initial value with as many digits as it needs.
+     *
      * @property n the literal's value.
      */
-    data class IntLit(val n: Int) : Expr()
+    data class IntLit(val n: BigInteger) : Expr() {
+        /**
+         * Builds an integer literal from a machine integer.
+         *
+         * @param n the literal's value.
+         */
+        constructor(n: Int) : this(BigInteger.valueOf(n.toLong()))
+    }
 
     /**
      * Integer subtraction, e.g. `y - 1`; evaluated rather than matched.

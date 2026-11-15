@@ -13,6 +13,16 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-14
+
+### Fixed
+
+- The integers of Quiver are now arbitrary-precision. The integer literals,
+  the arithmetic on transition values and the integer patterns are no longer
+  limited by the width of a machine integer, so the counters a program carries
+  are unbounded, as the language requires. The previous implementation used a
+  32-bit integer and silently wrapped around when a counter overflowed.
+
 ## [1.0.1] - 2026-11-14
 
 ### Fixed
@@ -55,6 +65,7 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 - The example programs and the documentation: the normative language
   reference and the step-by-step walkthrough of every example.
 
-[Unreleased]: https://github.com/cereda/quiver/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/cereda/quiver/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/cereda/quiver/tree/v1.0.2
 [1.0.1]: https://github.com/cereda/quiver/tree/v1.0.1
 [1.0.0]: https://github.com/cereda/quiver/tree/v1.0.0

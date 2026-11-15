@@ -2,6 +2,7 @@
 package br.usp.poli.lta.cereda.quiver
 
 import org.junit.jupiter.api.Test
+import java.math.BigInteger
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -42,7 +43,7 @@ class QuiverModelTest {
     fun `an integer is an integer`() {
         val value = Value.IntVal(42)
         assertEquals(Value.Type.INT, value.type)
-        assertEquals(42, value.asInt())
+        assertEquals(BigInteger.valueOf(42), value.asInt())
     }
 
     @Test

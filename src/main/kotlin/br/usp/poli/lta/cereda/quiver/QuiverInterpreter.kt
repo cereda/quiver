@@ -74,7 +74,7 @@ fun matchTerm(expr: Expr, subject: Value, env: Env): Env? = when (expr) {
     }
 
     is Expr.IntLit -> {
-        if (subject is Value.IntVal && subject.n == expr.n) env else null
+        if (subject is Value.IntVal && subject.n.compareTo(expr.n) == 0) env else null
     }
 
     is Expr.BoolLit -> {
@@ -443,7 +443,7 @@ private fun guardPasses(guard: Expr?, env: Env, currentState: String, automaton:
     val result = evalExpr(guard, env, currentState, automaton)
     return when (result) {
         is Value.BoolVal -> result.b
-        is Value.IntVal -> result.n != 0
+        is Value.IntVal -> result.n.signum() != 0
         else -> true
     }
 }

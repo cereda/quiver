@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package br.usp.poli.lta.cereda.quiver
 
+import java.math.BigInteger
+
 /**
  * A single token produced by the Quiver lexer.
  *
@@ -108,9 +110,12 @@ sealed class Token {
     /**
      * An integer literal, possibly negative.
      *
+     * The literal is an arbitrary-precision integer: the digits of the source
+     * are read as they are, without a machine-width limit.
+     *
      * @property n the literal's value.
      */
-    data class IntLit(val n: Int, override val line: Int, override val column: Int) : Token()
+    data class IntLit(val n: BigInteger, override val line: Int, override val column: Int) : Token()
 
     /**
      * A comment, from `#` to the end of the line.
@@ -315,7 +320,7 @@ private class Lexer(private val source: String) {
         while (i < source.length && source[i].isDigit()) {
             advance()
         }
-        tokens += Token.IntLit(source.substring(start, i).toInt(), tokenLine, tokenColumn)
+        tokens += Token.IntLit(source.substring(start, i).toBigInteger(), tokenLine, tokenColumn)
     }
 
     /** Lexes a hyphenated primitive, a `$state` reference, or an identifier. */
@@ -482,7 +487,7 @@ class Parser(private val tokens: List<Token>) {
          * instance of the wanted kind works as the expected value.
          */
         private val IDENT_PROBE = Token.Ident("", 0, 0)
-        private val INT_LIT_PROBE = Token.IntLit(0, 0, 0)
+        private val INT_LIT_PROBE = Token.IntLit(BigInteger.ZERO, 0, 0)
     }
 
     /** Parses `strategy <label> <kind> [max N] => { rules }`. */
@@ -502,7 +507,12 @@ class Parser(private val tokens: List<Token>) {
             if ((t as Token.Ident).name == "max") {
                 advance()
                 val n = (expect(INT_LIT_PROBE) as Token.IntLit).n
-                maxIterations = n
+                // The cap is a loop bound, so it has to fit in a machine
+                // integer; a larger literal is rejected rather than wrapped.
+                if (n.signum() < 0 || n > BigInteger.valueOf(Int.MAX_VALUE.toLong())) {
+                    throw QuiverException(peekLine(), peekColumn(), "The iteration cap must fit in a machine integer")
+                }
+                maxIterations = n.toInt()
             }
         }
         expect(Token.DoubleArrow) // =>
@@ -730,12 +740,12 @@ class Parser(private val tokens: List<Token>) {
 
         is Token.Plus -> {
             advance()
-            Expr.Plus(Expr.IntLit(0), parsePrimary()) // unary plus, treat as identity
+            Expr.Plus(Expr.IntLit(BigInteger.ZERO), parsePrimary()) // unary plus, treat as identity
         }
 
         is Token.Minus -> {
             advance()
-            Expr.Minus(Expr.IntLit(0), parsePrimary()) // unary minus
+            Expr.Minus(Expr.IntLit(BigInteger.ZERO), parsePrimary()) // unary minus
         }
 
         is Token.IntLit -> {
@@ -876,7 +886,7 @@ class Parser(private val tokens: List<Token>) {
     }
 
     /** Parses an integer literal optionally followed by `+ term` (e.g. `2 + 1`). */
-    private fun parseIntSuffix(n: Int): Expr {
+    private fun parseIntSuffix(n: BigInteger): Expr {
         if (peek() is Token.Plus) {
             advance()
             val right = parsePrimary()

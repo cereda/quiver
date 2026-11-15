@@ -64,7 +64,7 @@ value that it computed earlier, which is what
 Run it with:
 
 ```bash
-java -jar build/libs/quiver-1.0.1.jar -i src/main/resources/rec.quiver aabc
+java -jar build/libs/quiver-1.0.2.jar -i src/main/resources/rec.quiver aabc
 ```
 
 The companion document [the examples](examples.md) walks through every example
@@ -106,6 +106,12 @@ An integer literal is a sequence of digits. A leading `-` is the subtraction
 operator, not part of the literal: `-1` is parsed as the unary minus applied to
 `1`, and `a-1` is the subtraction of `1` from `a`. A leading `+` is the unary plus
 and evaluates to its operand.
+
+Integers are **arbitrary-precision**: a literal may have as many digits as the
+program needs, and the arithmetic on transition values never overflows and never
+wraps around. The counters a program carries are therefore unbounded. The single
+exception is the iteration cap of the `repeat` strategy, which is a loop bound
+and must fit in a machine integer; a larger literal is rejected with an error.
 
 ### Strings
 
@@ -306,7 +312,8 @@ order of the entries, so an entry whose value consults the automaton
 (`transitions-from`, `clone-automaton`) sees the entries declared before it.
 
 A transition's **value** is an arbitrary term: an integer (a counter), a closure,
-a sequence, a symbol. The rules read it, compute with it, and write it back.
+a sequence, a symbol. The rules read it, compute with it, and write it back. The
+integers are arbitrary-precision, so a counter is unbounded.
 
 ## Rules and clauses
 
@@ -557,7 +564,7 @@ The interactive read-eval-print loop loads a program and recognizes inputs again
 it:
 
 ```bash
-java -jar build/libs/quiver-1.0.1.jar
+java -jar build/libs/quiver-1.0.2.jar
 ```
 
 | Command | Meaning |

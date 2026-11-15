@@ -3,7 +3,9 @@ package br.usp.poli.lta.cereda.quiver
 
 import org.junit.jupiter.api.Test
 import java.io.File
+import java.math.BigInteger
 import kotlin.random.Random
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -1099,8 +1101,8 @@ class QuiverTest {
     @Test
     fun `negative integer literal is parsed and evaluated`() {
         val (negative, positive) = numericValues()
-        assertEquals(-1, negative)
-        assertEquals(7, positive)
+        assertEquals(BigInteger.valueOf(-1), negative)
+        assertEquals(BigInteger.valueOf(7), positive)
     }
 
     @Test
@@ -1131,8 +1133,75 @@ class QuiverTest {
     @Test
     fun `unary plus evaluates as the identity`() {
         val (negative, positive) = numericValues()
-        assertEquals(-1, negative)
-        assertEquals(7, positive)
+        assertEquals(BigInteger.valueOf(-1), negative)
+        assertEquals(BigInteger.valueOf(7), positive)
+    }
+
+    // ---------------------------------------------------------------------
+    // Arbitrary-precision integers: the counters a program carries must not
+    // be limited by the width of a machine integer.
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `a twenty-digit literal keeps every digit`() {
+        val decls = parseSource("x <- 12345678901234567890 => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        assertEquals(Expr.IntLit(BigInteger("12345678901234567890")), bind.expr)
+        val value = evalExpr(bind.expr, emptyMap(), "q0", emptyAutomaton())
+        assertEquals(BigInteger("12345678901234567890"), (value as Value.IntVal).n)
+    }
+
+    @Test
+    fun `arithmetic beyond the machine width does not wrap around`() {
+        // The sum is far beyond the range of a 64-bit integer: a machine-width
+        // counter would wrap around to a negative number here.
+        val decls = parseSource("x <- 9223372036854775807 + 1 => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        val value = evalExpr(bind.expr, emptyMap(), "q0", emptyAutomaton())
+        assertEquals(BigInteger("9223372036854775808"), (value as Value.IntVal).n)
+    }
+
+    @Test
+    fun `a big literal matches a big counter`() {
+        val literal = Expr.IntLit(BigInteger("98765432109876543210"))
+        val counter = Value.IntVal(BigInteger("98765432109876543210"))
+        assertNotNull(matchTerm(literal, counter, emptyMap()))
+        val other = Value.IntVal(BigInteger("98765432109876543211"))
+        assertNull(matchTerm(literal, other, emptyMap()))
+    }
+
+    @Test
+    fun `a big counter is rendered exactly`() {
+        assertEquals("98765432109876543210", valueToString(Value.IntVal(BigInteger("98765432109876543210"))))
+    }
+
+    @Test
+    fun `a big counter is carried by the automaton`() {
+        // The counter starts at a value beyond the machine width; the mapping
+        // entry that carries it must hold the exact value.
+        val source =
+            """
+            @fsm => {
+              start => q0
+              accepting => ${'$'}seq [q1]
+              mapping => {
+                (q0, a) -> (q0, 98765432109876543210)
+                (q0, b) -> (q1, 0)
+              }
+            }
+            """.trimIndent()
+        val automaton = buildAutomaton(parseSource(source).filterIsInstance<Decl.Fsm>().first())
+        val counter =
+            automaton.transitions.first { it.from == "q0" && it.symbol == "a" }.value
+                as Value.IntVal
+        assertEquals(BigInteger("98765432109876543210"), counter.n)
+    }
+
+    @Test
+    fun `an iteration cap beyond the machine width is rejected`() {
+        val ex = assertFailsWith<QuiverException> { parseSource("strategy s repeat max 99999999999999999999 => { }") }
+        val msg = ex.message ?: ""
+        assertContains(msg, "The iteration cap must fit in a machine integer")
     }
 
     // ---------------------------------------------------------------------
@@ -1213,7 +1282,7 @@ class QuiverTest {
     }
 
     /** Evaluates the values of the two transitions of the numeric source file. */
-    private fun numericValues(): Pair<Int, Int> {
+    private fun numericValues(): Pair<BigInteger, BigInteger> {
         val fsm = parseSource(load("numeric.quiver")).filterIsInstance<Decl.Fsm>().first()
         val automaton = emptyAutomaton()
         val values =
