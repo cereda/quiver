@@ -33,6 +33,7 @@ test suite exercises them.
 21. [`nondet-adaptive.quiver`: per-path adaptive actions](#nondet-adaptivequiver-per-path-adaptive-actions)
 22. [`nondet-strategy.quiver`: non-determinism with the `all` strategy](#nondet-strategyquiver-non-determinism-with-the-all-strategy)
 23. [`nondet-repeat.quiver`: non-determinism with the `repeat` strategy](#nondet-repeatquiver-non-determinism-with-the-repeat-strategy)
+24. [`counter-machine.quiver`: the simulation of a counter machine](#counter-machinequiver-the-simulation-of-a-counter-machine)
 
 ## Running an example
 
@@ -40,7 +41,7 @@ Every example is a Quiver source file. The interpreter recognizes one input
 string against it:
 
 ```bash
-java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/abn.quiver aabb
+java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/abn.quiver aabb
 ```
 
 The command prints `true` when the input is recognized and `false` otherwise.
@@ -48,14 +49,14 @@ The `--trace` option prints what happens at every step on the standard error
 stream, which is how the traces below were produced:
 
 ```bash
-java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/abn.quiver aabb --trace
+java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/abn.quiver aabb --trace
 ```
 
 The interactive REPL loads the same files and recognizes as many inputs as you
 like:
 
 ```bash
-java -jar build/libs/quiver-1.1.0.jar
+java -jar build/libs/quiver-1.2.0.jar
 ```
 
 ```
@@ -1056,7 +1057,7 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/nondet.quiver a --nondet
+java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/nondet.quiver a --nondet
 ```
 
 ## `nondet-adaptive.quiver`: per-path adaptive actions
@@ -1121,8 +1122,8 @@ The key point: path q1's retargeting of `(q1,b)` does not affect path q2, and vi
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/nondet-adaptive.quiver ab --nondet
-java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/nondet-adaptive.quiver ac --nondet
+java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/nondet-adaptive.quiver ab --nondet
+java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/nondet-adaptive.quiver ac --nondet
 ```
 
 ## `nondet-strategy.quiver`: non-determinism with the `all` strategy
@@ -1237,6 +1238,154 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/nondet-strategy.quiver a --nondet
-java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/nondet-repeat.quiver a --nondet
+java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/nondet-strategy.quiver a --nondet
+java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/nondet-repeat.quiver a --nondet
 ```
+
+## `counter-machine.quiver`: the simulation of a counter machine
+
+The last example is the one that shows what the internal transitions are for.
+A **counter machine** is a machine with a finite number of instructions and a
+finite number of unbounded counters. This program simulates the two-counter
+machine that reads a unary number and tells whether it is even:
+
+```
+L1: if c1 = 0 then accept
+    if c1 = 1 then reject
+    else c1 := c1 - 2; c2 := c2 + 1; goto L2
+L2: c2 := c2 - 1; goto L1
+```
+
+The encoding is the usual one: the states of the automaton are the
+instructions of the machine (`L1`, `L2`, `accept` and `reject`), and the
+counters travel in the value of the transition, as the nested pair `(c1, c2)`.
+The zero test of the machine is a pattern against the literal `0`, and the
+counters are arbitrary-precision integers, so the machine has unbounded
+counters.
+
+The input is `a^n z`: the `a`s load the number into the first counter, and the
+`z` starts the machine. The marker is needed because the internal moves are
+compulsory: the automaton cannot wait for the end of the input, so the program
+has to be told when the number ends.
+
+```quiver
+@fsm => {
+  start => q0
+  accepting => $seq [ accept ]
+  mapping => {
+    (q0, a) -> (q0, (0, 0))
+    (q0, z) -> (L1, (0, 0))
+  }
+}
+
+# The loading phase: every 'a' adds one to the first counter. The 'z'
+# transition keeps a copy of the counter, because it is the transition that
+# starts the machine.
+(q0, a) -> ($to, ($c1, $c2)) => {
+  _ => (q0, a) -> ($to, ($c1 + 1, $c2))
+  _ => (q0, z) -> (L1, ($c1 + 1, $c2))
+}
+
+# The 'z' starts the machine: the internal transition carries the counters
+# into the first instruction, and the machine runs from there on.
+(q0, z) -> ($to, ($c1, $c2)) => {
+  _ => (L1, epsilon) -> ($to, ($c1, $c2))
+}
+
+# L1, with the counter at zero: the machine halts, accepting.
+(L1, epsilon) -> ($next, (0, $c2)) => {
+  (L1, epsilon) -> ($next, (0, $c2)) => _
+  _ => (L1, epsilon) -> (accept, (0, $c2))
+}
+
+# L1, with the counter at one: the machine halts, rejecting.
+(L1, epsilon) -> ($next, (1, $c2)) => {
+  (L1, epsilon) -> ($next, (1, $c2)) => _
+  _ => (L1, epsilon) -> (reject, (1, $c2))
+}
+
+# L1, with any other counter: subtract two, add one to the second counter,
+# and go on to L2. The last clause materializes the transition of L2.
+(L1, epsilon) -> ($next, ($c1, $c2)) => {
+  (L1, epsilon) -> ($next, ($c1, $c2)) => _
+  _ => (L1, epsilon) -> (L2, ($c1 - 2, $c2 + 1))
+  _ => (L2, epsilon) -> (L2, ($c1 - 2, $c2 + 1))
+}
+
+# L2: subtract one from the second counter and go back to L1. The last clause
+# materializes the transition of L1.
+(L2, epsilon) -> ($next, ($c1, $c2)) => {
+  (L2, epsilon) -> ($next, ($c1, $c2)) => _
+  _ => (L2, epsilon) -> (L1, ($c1, $c2 - 1))
+  _ => (L1, epsilon) -> (L1, ($c1, $c2 - 1))
+}
+```
+
+The computation of the machine is a chain of internal transitions: every
+internal step executes one instruction, and the rules rewrite the transition as
+the machine proceeds. Each instruction rewrites its own transition and
+materializes the transition of the next instruction, so that the chain always
+has one link ready, and the chain ends when the machine halts, in `accept` or
+in `reject`.
+
+The trace of `aaz` shows the whole computation:
+
+```
+trace step state=q0 symbol=a transition=(q0,a)->(q0,(0,0))
+trace   insert transition (q0,a)->(q0,(1,0))
+trace   insert transition (q0,z)->(L1,(1,0))
+trace   rule fired: (q0,a) -> ($to,($c1,$c2))
+trace step state=q0 symbol=a transition=(q0,a)->(q0,(1,0))
+trace   insert transition (q0,a)->(q0,(2,0))
+trace   insert transition (q0,z)->(L1,(2,0))
+trace   rule fired: (q0,a) -> ($to,($c1,$c2))
+trace step state=q0 symbol=z transition=(q0,z)->(L1,(2,0))
+trace   insert transition (L1,epsilon)->(L1,(2,0))
+trace   rule fired: (q0,z) -> ($to,($c1,$c2))
+trace step state=L1 symbol=epsilon transition=(L1,epsilon)->(L1,(2,0))
+trace   remove transition (L1,epsilon)->*
+trace   insert transition (L1,epsilon)->(L2,(0,1))
+trace   insert transition (L2,epsilon)->(L2,(0,1))
+trace   rule fired: (L1,epsilon) -> ($next,($c1,$c2))
+trace step state=L2 symbol=epsilon transition=(L2,epsilon)->(L2,(0,1))
+trace   remove transition (L2,epsilon)->*
+trace   insert transition (L2,epsilon)->(L1,(0,0))
+trace   insert transition (L1,epsilon)->(L1,(0,0))
+trace   rule fired: (L2,epsilon) -> ($next,($c1,$c2))
+trace step state=L1 symbol=epsilon transition=(L1,epsilon)->(L1,(0,0))
+trace   remove transition (L1,epsilon)->*
+trace   insert transition (L1,epsilon)->(accept,(0,0))
+trace   rule fired: (L1,epsilon) -> ($next,(0,$c2))
+true
+```
+
+The two `a`s load the number two, and the machine runs three instructions:
+`L1` takes two off the first counter and puts one on the second, `L2` takes
+one off the second counter, and `L1` finds the first counter at zero, so the
+machine halts, accepting. The trace of `aaaz` is the same, except that the
+last instruction finds the counter at one and sends the automaton to `reject`,
+where the input is not accepted.
+
+| Input | Result |
+|---|---|
+| `z` | `true` (zero is even, and the machine halts at once) |
+| `az` | `false` (one is odd) |
+| `aaz` | `true` |
+| `aaaz` | `false` |
+| `aa` | `false` (the marker is missing, so the machine never starts) |
+| `aazz` | `false` (the machine has halted, and there is no transition out of `accept`) |
+
+The number of steps of the run is the length of the input plus the number of
+instructions the machine executes, so the budget has to cover the whole
+computation: the input `a^100 z` takes 101 steps of loading and 101 steps of
+computation, and it is accepted with the default budget of 10000 steps. A
+budget that is too small does not accept the input, it fails the run:
+
+```
+$ java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/counter-machine.quiver aaaaaaz --max-steps 8
+error: Epsilon closure did not terminate: the budget was exhausted after 1 internal steps
+```
+
+The message names the closure, because that is where the run was: the six
+symbols of the loading phase and the marker took seven units of the budget, so
+the closure took one internal step and the budget was gone.

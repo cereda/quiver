@@ -269,6 +269,11 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
             // Build the automaton from the FSM header if present.
             val newAutomaton = buildAutomaton(fsm)
 
+            // A cycle among the internal transitions that the rules cannot
+            // break is a program that never finishes: it is refused before it
+            // replaces the session.
+            checkEpsilonCycles(newAutomaton, selected.rules)
+
             // Everything is ready: the new session state replaces the old one.
             rules = newRules
             strategies = newStrategies

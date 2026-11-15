@@ -496,5 +496,20 @@ class QuiverException(val line: Int = 0, val column: Int = 0, message: String) :
 /**
  * Thrown when the rewrite step counter exceeds the configured fuel budget,
  * preventing non-termination in Turing-complete Quiver programs.
+ *
+ * @param message the message of the failure.
+ * @param cause the failure that caused it, when there is one.
  */
-class FuelExhaustedException(message: String) : Exception(message)
+open class FuelExhaustedException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/**
+ * Thrown when the fuel budget is exhausted inside an epsilon closure: the
+ * internal transitions of the automaton did not come to an end.
+ *
+ * It is a [FuelExhaustedException], so the handlers of the budget treat it as
+ * one, but its message names the closure as the cause.
+ *
+ * @param message the message of the failure.
+ * @param cause the exhaustion that caused it, when there is one.
+ */
+class EpsilonClosureException(message: String, cause: Throwable? = null) : FuelExhaustedException(message, cause)

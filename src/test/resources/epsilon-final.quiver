@@ -1,0 +1,13 @@
+# The epsilon transition: the acceptance is a property of the final closed
+# frontier, evaluated once. The last symbol leads to the accepting state q1,
+# but the final closure leads to q2, which is not accepting, so the input is
+# rejected.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q1, epsilon) -> (q2, 0)
+  }
+}

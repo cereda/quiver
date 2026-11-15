@@ -247,6 +247,36 @@ class QuiverParserTest {
     }
 
     @Test
+    fun `an arithmetic expression is an element of a pair`() {
+        // The grammar says the elements of a pair are terms, and a term may be
+        // an arithmetic expression.
+        val decls = parseSource("x <- (\$n + 1, \$m) => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        val expected =
+            Expr.Pair(
+                Expr.Plus(Expr.Sym("\$n"), Expr.IntLit(1)),
+                Expr.Sym("\$m"),
+            )
+        assertEquals(expected, bind.expr)
+    }
+
+    @Test
+    fun `the arithmetic operators are left associative`() {
+        val decls = parseSource("x <- 1 + 2 + 3 => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        val expected = Expr.Plus(Expr.Plus(Expr.IntLit(1), Expr.IntLit(2)), Expr.IntLit(3))
+        assertEquals(expected, bind.expr)
+    }
+
+    @Test
+    fun `an arithmetic expression may be the operand of a function application`() {
+        val decls = parseSource("x <- 1 + f(y) => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern as Expr.Bind
+        val expected = Expr.Plus(Expr.IntLit(1), Expr.App(Expr.Sym("f"), Expr.Sym("y")))
+        assertEquals(expected, bind.expr)
+    }
+
+    @Test
     fun `a function literal without a parameter is a syntax error`() {
         val error = assertFailsWith<QuiverException> { parseSource("x <- fn 1 => 1") }
         assertContains(error.message ?: "", "Expected parameter name in 'fn'")

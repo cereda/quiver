@@ -1,0 +1,16 @@
+# The epsilon transition: the rules keep the internal transition alive, so the
+# closure never ends and the budget of the run is exhausted.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, epsilon) -> (q0, 0)
+    (q0, a) -> (q2, 0)
+  }
+}
+
+(q0, epsilon) -> ($to, $n) => {
+  (q0, epsilon) -> ($to, $n) => _
+  _ => (q0, epsilon) -> ($to, $n)
+}

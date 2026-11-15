@@ -13,6 +13,44 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-15
+
+### Added
+
+- The **epsilon transition**, the internal transition of the automaton: a
+  transition whose symbol is the distinguished symbol `epsilon` is taken
+  without consuming an input symbol. The internal moves are compulsory, and
+  the run takes them before the first symbol and after every symbol, so the
+  shape of a run is `closure -> consume -> closure -> ... -> closure ->
+  accept`. The acceptance is a property of the state the automaton rests in
+  after the final closure, and it is evaluated once, at the end of the run.
+- The **cycle guard**, which refuses a program whose internal transitions form
+  a cycle that the rules cannot break, and names the cycle it found: `Epsilon
+  cycle detected: q0 -> q1 -> q0`. The check is conservative: a rule whose
+  clauses mention a variable, a wildcard or a binding in the symbol position
+  of a transition may break the cycle, and so the program is accepted. A cycle
+  in a part of the automaton that no run reaches is harmless, and the program
+  is accepted as well. The interactive loop keeps the previous session when a
+  program is refused.
+- The example program `counter-machine.quiver`, which simulates a two-counter
+  machine with internal transitions, and its walkthrough in the examples
+  document.
+
+### Changed
+
+- A run that exhausts its budget inside a closure now reports the closure as
+  the cause of the failure, and names the number of internal steps the closure
+  took: `Epsilon closure did not terminate: the budget was exhausted after 20
+  internal steps`.
+
+### Fixed
+
+- An arithmetic expression may now be an element of a pair, as in
+  `($n + 1, $m)`. The grammar says the elements of a pair are terms, and a
+  term may be an arithmetic expression, but the parser rejected it.
+- The arithmetic operators are consistently left-associative, so `a + b + c`
+  is `(a + b) + c`.
+
 ## [1.1.0] - 2026-11-14
 
 ### Added
@@ -91,7 +129,8 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 - The example programs and the documentation: the normative language
   reference and the step-by-step walkthrough of every example.
 
-[Unreleased]: https://github.com/cereda/quiver/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/cereda/quiver/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/cereda/quiver/tree/v1.2.0
 [1.1.0]: https://github.com/cereda/quiver/tree/v1.1.0
 [1.0.2]: https://github.com/cereda/quiver/tree/v1.0.2
 [1.0.1]: https://github.com/cereda/quiver/tree/v1.0.1

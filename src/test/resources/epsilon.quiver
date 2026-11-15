@@ -1,0 +1,12 @@
+# The epsilon transition: the run takes the internal transition out of the
+# start state before it reads the first symbol, and the internal transition
+# consumes no input.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, epsilon) -> (q1, 0)
+    (q1, a) -> (q2, 0)
+  }
+}

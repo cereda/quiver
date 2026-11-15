@@ -29,6 +29,10 @@ semantic choice is described here.
 13. [The REPL](#the-repl)
 14. [Appendix: the grammar in one block](#appendix-the-grammar-in-one-block)
 
+The subsections of the two chapters that matter most to the semantics are
+[the epsilon transition](#the-epsilon-transition), [the cycle
+guard](#the-cycle-guard) and [the closure](#the-closure).
+
 ## A first program
 
 The phase recognizer, which reads one or more `a`s, then one or more
@@ -65,7 +69,7 @@ value that it computed earlier, which is what
 Run it with:
 
 ```bash
-java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/rec.quiver aabc
+java -jar build/libs/quiver-1.2.0.jar -i src/main/resources/rec.quiver aabc
 ```
 
 The companion document [the examples](examples.md) walks through every example
@@ -162,6 +166,11 @@ The wildcard `_` matches any term without binding it.
 $x         # a variable
 _          # the wildcard
 ```
+
+The identifier `epsilon` is an ordinary symbol, with one exception: in the
+symbol position of a transition it denotes the internal transition (see [The
+epsilon transition](#the-epsilon-transition)). Everywhere else it is a symbol
+like any other, and a state may be named `epsilon`.
 
 ### Pairs and arrows
 
@@ -318,6 +327,53 @@ A transition's **value** is an arbitrary term: an integer (a counter), a closure
 a sequence, a symbol. The rules read it, compute with it, and write it back. The
 integers are arbitrary-precision, so a counter is unbounded.
 
+### The epsilon transition
+
+A transition whose symbol is the distinguished symbol `epsilon` is an
+**internal transition**: the run takes it without consuming an input symbol.
+
+```quiver
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, epsilon) -> (q1, 0)
+    (q1, a) -> (q2, 0)
+  }
+}
+```
+
+The name `epsilon` is an ordinary identifier, so the grammar is unchanged: it
+has its special meaning only in the symbol position of a transition. A state
+may still be named `epsilon`, since a state name is never a symbol. And the
+input is read one character at a time, so the input can never contain the
+symbol `epsilon` either.
+
+The internal transitions are what makes the language Turing-complete: a chain
+of internal transitions is a computation that no input bounds (see
+[Recognition](#recognition) and the counter machine in the examples).
+
+### The cycle guard
+
+A cycle among the internal transitions of the automaton is a program that never
+finishes: the closure of a state on the cycle never ends. When the rules of the
+program cannot break such a cycle, the interpreter refuses the program when it
+is loaded, and names the cycle it found:
+
+```
+Epsilon cycle detected: q0 -> q1 -> q0
+```
+
+The check applies when no rule of the active strategy may insert or remove an
+internal transition. The analysis is conservative: a rule whose clauses mention
+a variable, a wildcard or a binding in the symbol position of a transition may
+break the cycle, and so the program is accepted. A cycle in a part of the
+automaton that no run ever reaches is harmless, and the program is accepted as
+well.
+
+When the rules may break the cycle, the program is accepted and the run reports
+the failure when the budget is exhausted (see [Fuel](#fuel)).
+
 ## Rules and clauses
 
 ### The subject
@@ -449,7 +505,9 @@ many transitions at once.
 
 The interpreter recognizes an input string symbol by symbol:
 
-1. the automaton starts at its start state;
+1. the automaton starts at its start state, and **takes the internal
+   transitions** that leave it, until it comes to rest (the *closure* of the
+   state);
 2. for each symbol of the input:
    1. the transition leaving the current state on that symbol is looked up; if
       there is none, the input is **rejected**;
@@ -461,8 +519,33 @@ The interpreter recognizes an input string symbol by symbol:
    3. the automaton moves to the target of the transition, which the rules may
       have rewritten. If the rules removed the transition, the original target
       is used;
+   4. the automaton **takes the internal transitions** again, until it comes to
+      rest;
 3. when the input is exhausted, it is **accepted** if and only if the automaton is
-   in an accepting state.
+   in an accepting state *after the final closure*.
+
+### The closure
+
+The internal moves are **compulsory**: a state that has an internal transition
+does not come to rest before the chain of internal transitions ends. Each
+internal transition is a step of its own, so the rules are consulted on it and
+may rewrite it, and each one consumes a unit of the budget.
+
+The closure is taken before the first symbol and after every symbol, so the
+shape of a run is:
+
+```
+closure -> consume -> closure -> consume -> ... -> closure -> accept
+```
+
+The acceptance is a property of the state the automaton rests in after the
+final closure. It is evaluated once, at the end of the run: a path that reaches
+an accepting state in the middle of a closure does not accept and halt early,
+because the closure is compulsory and carries the run past it.
+
+In the non-deterministic mode, every internal transition out of a state is an
+alternative path, as any other transition is, and each path keeps its own
+automaton clone.
 
 ### Non-deterministic recognition (`--nondet`)
 
@@ -482,20 +565,29 @@ state on that symbol is followed in parallel:
 Strategies operate per path: each path evaluates its rules independently on its
 own automaton clone.
 
-The empty input is accepted exactly when the start state is accepting.
+The empty input is accepted exactly when the start state is accepting, after
+the closure of the start state.
 
 ### Fuel
 
 Every transition the run follows is a step, and every step consumes one unit of
 fuel. The deterministic recognizer follows at most one transition per input
 symbol, and the non-deterministic one follows one per path, so a symbol may
-account for several steps there.
+account for several steps there. The internal transitions are steps as well, so
+a computation that no input bounds is bounded by the budget.
 
 The budget (`--max-steps`, 10000 by default) bounds the number of steps a run
 may take; when it is exhausted, the run is aborted with an error that names the
 number of steps taken. The budget protects the interpreter against a program
 that rewrites the automaton forever, and against a non-deterministic program
 whose frontier grows without bound.
+
+When the budget is exhausted inside a closure, the failure names the closure,
+because that is where the run was:
+
+```
+Epsilon closure did not terminate: the budget was exhausted after 20 internal steps
+```
 
 The repetitions of a `repeat` strategy are bounded by the iteration limit of
 the strategy, and not by the fuel.
@@ -597,7 +689,14 @@ The interpreter reports a Quiver error, never an unchecked exception, for:
   `symbols-from` over anything but a state symbol);
 * a binding in a value position;
 * a circular `include`;
+* a cycle among the internal transitions that the rules cannot break (see
+  [The cycle guard](#the-cycle-guard));
 * an exhausted fuel budget.
+
+The lexical and the syntactic errors carry the position of the offending
+construct; the errors of the run itself do not, because they have no place in
+the source: the cycle guard names the cycle, and the exhausted budget names
+the number of steps taken.
 
 ## The command-line interface
 
@@ -636,7 +735,7 @@ The interactive read-eval-print loop loads a program and recognizes inputs again
 it:
 
 ```bash
-java -jar build/libs/quiver-1.1.0.jar
+java -jar build/libs/quiver-1.2.0.jar
 ```
 
 | Command | Meaning |
@@ -732,3 +831,10 @@ variable       ::= '$' identifier
 identifier     ::= letter (letter | digit | '$' | '.' | '_' | '/')*
                  | ('$' | '@' | '.' | '/') (letter | digit | '$' | '.' | '_' | '/')*
 ```
+
+Two remarks on the grammar. The arithmetic operators are left-associative, so
+`a + b + c` is `(a + b) + c`, and a term may be followed by a comma, so the
+elements of a pair may be arithmetic expressions, as in `($n + 1, $m)`. And the
+symbol `epsilon` is an ordinary identifier: it has its special meaning only in
+the symbol position of a transition, where it denotes the internal transition
+(see [The epsilon transition](#the-epsilon-transition)).

@@ -1,0 +1,13 @@
+# The epsilon transition: a cycle among the internal transitions of a part of
+# the automaton that no run ever reaches. The cycle is harmless, and the
+# program is accepted.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q2, 0)
+    (q3, epsilon) -> (q4, 0)
+    (q4, epsilon) -> (q3, 0)
+  }
+}

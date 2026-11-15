@@ -1,0 +1,74 @@
+# Quiver example: the simulation of a counter machine.
+#
+# The simulated machine is a two-counter machine that reads a unary number and
+# tells whether it is even:
+#
+#   L1: if c1 = 0 then accept
+#       if c1 = 1 then reject
+#       else c1 := c1 - 2; c2 := c2 + 1; goto L2
+#   L2: c2 := c2 - 1; goto L1
+#
+# The states of the automaton are the instructions of the machine (L1, L2,
+# accept and reject), and the counters are carried in the value of the
+# internal transition, as a nested pair (c1, c2). The zero test is a pattern
+# against the literal 0.
+#
+# The input is a^n z: the a's load the number into the first counter, and the
+# z starts the machine. The computation of the machine is a chain of internal
+# transitions: every internal step executes one instruction, and the rules
+# rewrite the transition as the machine proceeds. The chain ends when the
+# machine halts, and the state it halts in decides the answer.
+#
+# Each instruction rewrites its own transition and materializes the transition
+# of the next instruction, so that the chain always has one link ready.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ accept ]
+  mapping => {
+    (q0, a) -> (q0, (0, 0))
+    (q0, z) -> (L1, (0, 0))
+  }
+}
+
+# The loading phase: every 'a' adds one to the first counter. The 'z'
+# transition keeps a copy of the counter, because it is the transition that
+# starts the machine.
+(q0, a) -> ($to, ($c1, $c2)) => {
+  _ => (q0, a) -> ($to, ($c1 + 1, $c2))
+  _ => (q0, z) -> (L1, ($c1 + 1, $c2))
+}
+
+# The 'z' starts the machine: the internal transition carries the counters
+# into the first instruction, and the machine runs from there on.
+(q0, z) -> ($to, ($c1, $c2)) => {
+  _ => (L1, epsilon) -> ($to, ($c1, $c2))
+}
+
+# L1, with the counter at zero: the machine halts, accepting.
+(L1, epsilon) -> ($next, (0, $c2)) => {
+  (L1, epsilon) -> ($next, (0, $c2)) => _
+  _ => (L1, epsilon) -> (accept, (0, $c2))
+}
+
+# L1, with the counter at one: the machine halts, rejecting.
+(L1, epsilon) -> ($next, (1, $c2)) => {
+  (L1, epsilon) -> ($next, (1, $c2)) => _
+  _ => (L1, epsilon) -> (reject, (1, $c2))
+}
+
+# L1, with any other counter: subtract two, add one to the second counter,
+# and go on to L2. The last clause materializes the transition of L2.
+(L1, epsilon) -> ($next, ($c1, $c2)) => {
+  (L1, epsilon) -> ($next, ($c1, $c2)) => _
+  _ => (L1, epsilon) -> (L2, ($c1 - 2, $c2 + 1))
+  _ => (L2, epsilon) -> (L2, ($c1 - 2, $c2 + 1))
+}
+
+# L2: subtract one from the second counter and go back to L1. The last clause
+# materializes the transition of L1.
+(L2, epsilon) -> ($next, ($c1, $c2)) => {
+  (L2, epsilon) -> ($next, ($c1, $c2)) => _
+  _ => (L2, epsilon) -> (L1, ($c1, $c2 - 1))
+  _ => (L1, epsilon) -> (L1, ($c1, $c2 - 1))
+}

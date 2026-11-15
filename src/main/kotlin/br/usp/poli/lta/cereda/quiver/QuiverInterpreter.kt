@@ -15,6 +15,16 @@ const val DEFAULT_MAX_STEPS = 10_000
 const val DEFAULT_MAX_ITERATIONS = 100
 
 /**
+ * The name of the symbol that labels an **internal transition**: the epsilon
+ * transition, which the run takes without consuming an input symbol.
+ *
+ * The name is an ordinary identifier, so the grammar is unchanged; it has its
+ * special meaning only in the symbol position of a transition. A state may
+ * still be named `epsilon`, since a state name is never a symbol.
+ */
+const val EPSILON_SYMBOL = "epsilon"
+
+/**
  * Matches a pattern [expr] against a [subject], producing an [Env] of variable
  * bindings, or null when the match fails.
  *
@@ -949,6 +959,12 @@ internal fun exprToString(expr: Expr): String = when (expr) {
  * Recognizes an input string using the automaton and rules.
  * Returns true if the input is fully consumed and ends in an accepting state.
  *
+ * The run is a sequence of closures and input-driven steps: the automaton
+ * starts at its start state, takes the internal transitions that leave it, and
+ * then consumes the input one symbol at a time, taking the internal
+ * transitions again after every symbol. The acceptance is decided on the
+ * state the automaton rests in after the final closure.
+ *
  * @param maxSteps maximum number of steps before throwing
  *   [FuelExhaustedException] (default: 10000).
  * @param ruleIndex optional index mapping head keys to rules, for faster lookup.
@@ -964,12 +980,63 @@ fun recognize(
 ): Boolean {
     val fuel = Fuel(maxSteps)
     var state = automaton.start
+    // The closure of the start state, before the first symbol.
+    state = closeInternally(state, automaton, strategy, trace, fuel, ruleIndex)
     for (symbol in input) {
         val result = step(state, symbol.toString(), automaton, strategy, trace, fuel, ruleIndex)
         if (result.nextState == null) return false
         state = result.nextState
+        // The closure again, after every symbol.
+        state = closeInternally(state, automaton, strategy, trace, fuel, ruleIndex)
     }
     return automaton.accepting.contains(state)
+}
+
+/**
+ * Takes the internal transitions that leave a state, until there is none left.
+ *
+ * The internal moves are compulsory: a state that has an internal transition
+ * does not come to rest before the chain of internal transitions ends. Each
+ * internal transition is a step of its own, so the rules are consulted on it
+ * and may rewrite it, and each one consumes a unit of the budget.
+ *
+ * @param state the state the closure starts from.
+ * @param automaton the automaton being rewritten.
+ * @param strategy the active rewriting strategy, or null for no rules.
+ * @param trace when true, prints a step trace to stderr.
+ * @param fuel the run's fuel budget; every internal step consumes one unit.
+ * @param ruleIndex optional index mapping head keys to rules, for faster lookup.
+ * @return the state the closure ends in.
+ * @throws EpsilonClosureException when the budget is exhausted inside the
+ *   closure, that is, when the internal transitions do not come to an end.
+ */
+private fun closeInternally(
+    state: String,
+    automaton: Automaton,
+    strategy: Strategy?,
+    trace: Boolean,
+    fuel: Fuel,
+    ruleIndex: Map<String, List<Rule>>?,
+): String {
+    // The closure counts its own steps, so that the failure it reports names
+    // the internal steps and not the steps of the whole run.
+    val start = fuel.taken
+    var current = state
+    while (true) {
+        val internal = automaton.transitions.find { it.from == current && it.symbol == EPSILON_SYMBOL }
+        if (internal == null) return current
+        val result =
+            try {
+                step(current, EPSILON_SYMBOL, automaton, strategy, trace, fuel, ruleIndex)
+            } catch (exhausted: FuelExhaustedException) {
+                throw EpsilonClosureException(
+                    "Epsilon closure did not terminate: the budget was exhausted " +
+                        "after ${fuel.taken - start} internal steps",
+                    exhausted,
+                )
+            }
+        current = result.nextState ?: return current
+    }
 }
 
 /**
@@ -1140,6 +1207,11 @@ private fun processTransitionNondet(
  * Every transition that matches a path is a path of its own, so a program
  * with two identical transitions out of a state explores two paths.
  *
+ * The run is a sequence of closures and input-driven steps, exactly as in the
+ * deterministic mode: the internal transitions are taken before the first
+ * symbol and after every symbol, and the acceptance is decided on the closed
+ * frontier.
+ *
  * @param input the input string to recognize.
  * @param automaton the automaton to recognize against.
  * @param strategy the active rewriting strategy, or null for no rules.
@@ -1159,14 +1231,123 @@ fun recognizeNondet(
 ): Boolean {
     val fuel = Fuel(maxSteps)
     var frontier = listOf(FrontierState(automaton.start, automaton.clone()))
+    // The closure of the start state, before the first symbol.
+    frontier = closeFrontierInternally(frontier, strategy, trace, fuel, ruleIndex)
 
     for (symbol in input) {
         frontier = stepNondet(frontier, symbol.toString(), strategy, trace, fuel, ruleIndex)
-        if (frontier.isEmpty()) return false // every path died
+        if (frontier.isNotEmpty()) {
+            // The closure again, after every symbol.
+            frontier = closeFrontierInternally(frontier, strategy, trace, fuel, ruleIndex)
+        }
+        if (frontier.isEmpty()) break // every path died
     }
 
     // NFA acceptance: any surviving frontier state is accepting.
     return frontier.any { it.automaton.accepting.contains(it.state) }
+}
+
+/**
+ * Takes the internal transitions that leave the states of a frontier, until
+ * none of them has one left.
+ *
+ * The internal moves are compulsory, and every internal transition out of a
+ * state is an alternative path, as any other transition is in the
+ * non-deterministic mode. Each path keeps its own automaton clone, so an
+ * internal step that rewrites the transition function affects only its own
+ * branch.
+ *
+ * @param frontier the frontier to close: one (state, automaton) pair per path.
+ * @param strategy the active rewriting strategy, or null for no rules.
+ * @param trace when true, prints a step trace to stderr.
+ * @param fuel the run's fuel budget; every internal transition consumes a unit.
+ * @param ruleIndex optional index mapping head keys to rules, for faster lookup.
+ * @return the closed frontier: one (state, automaton) pair per surviving path.
+ * @throws EpsilonClosureException when the budget is exhausted inside the
+ *   closure, that is, when the internal transitions do not come to an end.
+ */
+private fun closeFrontierInternally(
+    frontier: List<FrontierState>,
+    strategy: Strategy?,
+    trace: Boolean,
+    fuel: Fuel,
+    ruleIndex: Map<String, List<Rule>>?,
+): List<FrontierState> {
+    // The closure counts its own steps, so that the failure it reports names
+    // the internal steps and not the steps of the whole run.
+    val start = fuel.taken
+    var current = frontier
+    while (true) {
+        val moved = current.any { hasInternals(it) }
+        try {
+            current = current.flatMap { fs -> expandInternally(fs, strategy, trace, fuel, ruleIndex) }
+        } catch (exhausted: FuelExhaustedException) {
+            throw EpsilonClosureException(
+                "Epsilon closure did not terminate: the budget was exhausted " +
+                    "after ${fuel.taken - start} internal steps",
+                exhausted,
+            )
+        }
+        if (!moved) return current
+    }
+}
+
+/**
+ * True when a path has an internal transition to follow.
+ *
+ * @param fs the path.
+ * @return true when the path has an internal transition.
+ */
+private fun hasInternals(fs: FrontierState): Boolean =
+    fs.automaton.transitions.any { it.from == fs.state && it.symbol == EPSILON_SYMBOL }
+
+/**
+ * Expands a path into the paths that follow its internal transitions: one
+ * path for the path itself when it has no internal transition, and one path
+ * per internal transition otherwise.
+ *
+ * @param fs the path to expand.
+ * @param strategy the active rewriting strategy, or null for no rules.
+ * @param trace when true, prints a step trace to stderr.
+ * @param fuel the run's fuel budget; every internal transition consumes a unit.
+ * @param ruleIndex optional index mapping head keys to rules, for faster lookup.
+ * @return the paths that follow the internal transitions of the path.
+ */
+private fun expandInternally(
+    fs: FrontierState,
+    strategy: Strategy?,
+    trace: Boolean,
+    fuel: Fuel,
+    ruleIndex: Map<String, List<Rule>>?,
+): List<FrontierState> {
+    val internals = fs.automaton.transitions.filter { it.from == fs.state && it.symbol == EPSILON_SYMBOL }
+    if (internals.isEmpty()) return listOf(fs)
+    return internals.map { internal -> followInternal(internal, fs, strategy, trace, fuel, ruleIndex) }
+}
+
+/**
+ * Follows one internal transition of a path, consuming a unit of the budget.
+ *
+ * @param internal the internal transition to follow.
+ * @param fs the path the transition belongs to.
+ * @param strategy the active rewriting strategy, or null for no rules.
+ * @param trace when true, prints a step trace to stderr.
+ * @param fuel the run's fuel budget.
+ * @param ruleIndex optional index mapping head keys to rules, for faster lookup.
+ * @return the path that follows the transition.
+ * @throws FuelExhaustedException when the budget is exhausted.
+ */
+private fun followInternal(
+    internal: Automaton.Transition,
+    fs: FrontierState,
+    strategy: Strategy?,
+    trace: Boolean,
+    fuel: Fuel,
+    ruleIndex: Map<String, List<Rule>>?,
+): FrontierState {
+    fuel.consume()
+    val result = processTransitionNondet(internal, fs.automaton, strategy, trace, ruleIndex)
+    return FrontierState(result.nextState, result.automaton)
 }
 
 /**
@@ -1367,6 +1548,10 @@ fun runQuiver(
 
     val automaton = buildAutomaton(fsm)
 
+    // A cycle among the internal transitions that the rules cannot break is a
+    // program that never finishes: it is refused before the run starts.
+    checkEpsilonCycles(automaton, activeStrategy.rules)
+
     return if (nondet) {
         recognizeNondet(input, automaton, activeStrategy, trace, maxSteps, ruleIndex)
     } else {
@@ -1401,6 +1586,196 @@ internal fun buildAutomaton(fsm: Decl.Fsm?): Automaton {
         }
     }
     return automaton
+}
+
+/**
+ * Checks the automaton for an epsilon cycle, when the rules of the program
+ * cannot break one.
+ *
+ * A cycle among the internal transitions of the automaton is a program that
+ * never finishes: the closure of a state on the cycle never ends. When the
+ * rules of the program may insert or remove an internal transition, the cycle
+ * proves nothing, because a rule may break it; the check is then skipped. It
+ * applies, in particular, to the programs that declare no rules at all, whose
+ * transition function is static.
+ *
+ * Only the states that are reachable from the start state count: a cycle in a
+ * part of the automaton that no run ever reaches is harmless.
+ *
+ * @param automaton the automaton to check.
+ * @param rules the rules of the active strategy.
+ * @throws QuiverException when the internal transitions of the automaton
+ *   contain a cycle that the rules cannot break.
+ */
+internal fun checkEpsilonCycles(automaton: Automaton, rules: List<Rule>) {
+    if (mayRewriteInternalTransition(rules)) return
+    val cycle = findEpsilonCycle(automaton) ?: return
+    throw QuiverException(0, 0, "Epsilon cycle detected: ${cycle.joinToString(" -> ")}")
+}
+
+/**
+ * True when the rules may insert or remove an internal transition, in which
+ * case an epsilon cycle of the declared automaton proves nothing.
+ *
+ * The analysis is conservative: it errs only in the safe direction, so a
+ * program that is rejected is always a program whose cycle cannot be broken.
+ *
+ * @param rules the rules of the active strategy.
+ * @return true when a rule may insert or remove an internal transition.
+ */
+internal fun mayRewriteInternalTransition(rules: List<Rule>): Boolean =
+    rules.any { rule -> rule.clauses.any { clause -> clauseTouchesInternal(clause) } }
+
+/**
+ * True when a clause may insert or remove an internal transition.
+ *
+ * @param clause the clause to analyse.
+ * @return true when the clause may act on an internal transition.
+ */
+private fun clauseTouchesInternal(clause: Clause): Boolean {
+    val right = clause.right
+    val touches =
+        when (right) {
+            // The sweep matches its pattern against the transitions, so a
+            // pattern that may match an internal one lets the nested clauses
+            // act on it.
+            is ClauseRight.Sweep ->
+                mayDenoteInternalTransition(clause.left) ||
+                    right.clauses.any { nested -> clauseTouchesInternal(nested) }
+
+            // A nested block may act on an internal transition.
+            is ClauseRight.Block -> right.clauses.any { nested -> clauseTouchesInternal(nested) }
+
+            // The left-hand side of a clause denotes the transition it
+            // removes, and the right-hand side the transition it inserts.
+            is ClauseRight.Rhs ->
+                mayDenoteInternalTransition(clause.left) || mayDenoteInternalTransition(right.expr)
+
+            is ClauseRight.Wildcard -> mayDenoteInternalTransition(clause.left)
+        }
+    return touches
+}
+
+/**
+ * True when an expression may denote a transition whose symbol is the
+ * internal one.
+ *
+ * @param expr the expression to analyse; null denotes no transition.
+ * @return true when the expression may denote an internal transition.
+ */
+private fun mayDenoteInternalTransition(expr: Expr?): Boolean = when (expr) {
+    is Expr.Arrow -> mayBeInternalKey(expr.left)
+    else -> false
+}
+
+/**
+ * True when the symbol position of a transition key may hold the internal
+ * symbol.
+ *
+ * @param expr the expression in the key position.
+ * @return true when the key may be an internal one.
+ */
+private fun mayBeInternalKey(expr: Expr): Boolean = when (expr) {
+    is Expr.Pair -> mayBeInternalSymbol(expr.right)
+    else -> false
+}
+
+/**
+ * True when an expression in the symbol position may denote the internal
+ * symbol.
+ *
+ * A literal symbol other than the internal one rules the transition out; a
+ * variable or a wildcard may be bound to the internal symbol, and so may the
+ * result of any other form of expression, which the analysis does not
+ * understand.
+ *
+ * @param expr the expression in the symbol position.
+ * @return true when the symbol may be the internal one.
+ */
+private fun mayBeInternalSymbol(expr: Expr): Boolean = when (expr) {
+    is Expr.Sym -> expr.name == EPSILON_SYMBOL || expr.name.startsWith("$")
+    is Expr.Wildcard -> true
+    is Expr.Bind -> mayBeInternalSymbol(expr.expr)
+    else -> true
+}
+
+/**
+ * Finds a cycle among the internal transitions of the automaton, if there is
+ * one.
+ *
+ * The cycle is sought among the states that are reachable from the start
+ * state through any transition, and it is returned as the list of the states
+ * that form it, with the first state repeated at the end.
+ *
+ * @param automaton the automaton to analyse.
+ * @return the cycle, or null when the internal transitions are acyclic.
+ */
+internal fun findEpsilonCycle(automaton: Automaton): List<String>? {
+    val reachable = reachableStates(automaton)
+    val edges = automaton.transitions
+        .filter { it.symbol == EPSILON_SYMBOL && it.from in reachable && it.to in reachable }
+        .groupBy({ it.from }, { it.to })
+    val visited = mutableSetOf<String>()
+    val stack = mutableListOf<String>()
+    for (state in reachable) {
+        if (state !in visited) {
+            val cycle = findCycleFrom(state, edges, visited, stack)
+            if (cycle != null) return cycle
+        }
+    }
+    return null
+}
+
+/**
+ * The states that are reachable from the start state, through any transition.
+ *
+ * @param automaton the automaton to analyse.
+ * @return the reachable states.
+ */
+private fun reachableStates(automaton: Automaton): Set<String> {
+    val reachable = mutableSetOf(automaton.start)
+    val pending = ArrayDeque<String>()
+    pending.add(automaton.start)
+    while (pending.isNotEmpty()) {
+        val state = pending.removeFirst()
+        for (transition in automaton.transitions.filter { it.from == state }) {
+            if (reachable.add(transition.to)) pending.add(transition.to)
+        }
+    }
+    return reachable
+}
+
+/**
+ * Searches a cycle of internal transitions, depth first.
+ *
+ * @param state the state to explore.
+ * @param edges the internal transitions, grouped by their source state.
+ * @param visited the states already explored.
+ * @param stack the states on the path currently being explored.
+ * @return the cycle, or null when there is none from this state.
+ */
+private fun findCycleFrom(
+    state: String,
+    edges: Map<String, List<String>>,
+    visited: MutableSet<String>,
+    stack: MutableList<String>,
+): List<String>? {
+    visited.add(state)
+    stack.add(state)
+    var cycle: List<String>? = null
+    for (next in edges[state].orEmpty()) {
+        if (cycle != null) break
+        val index = stack.indexOf(next)
+        if (index >= 0) {
+            // The state is on the path being explored: the cycle runs from it
+            // back to it.
+            cycle = stack.subList(index, stack.size).toList() + next
+        } else if (next !in visited) {
+            cycle = findCycleFrom(next, edges, visited, stack)
+        }
+    }
+    stack.removeAt(stack.size - 1)
+    return cycle
 }
 
 /**

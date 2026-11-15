@@ -1,0 +1,13 @@
+# The epsilon transition, in the non-deterministic mode: the two internal
+# transitions out of the start state are two paths of their own, and only one
+# of them reads the input.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, epsilon) -> (q1, 0)
+    (q0, epsilon) -> (q3, 0)
+    (q1, a) -> (q2, 0)
+  }
+}

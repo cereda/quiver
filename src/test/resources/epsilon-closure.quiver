@@ -1,0 +1,13 @@
+# The epsilon transition: the run takes the internal transitions after every
+# symbol, and the acceptance is decided on the state the final closure rests
+# in, which is not the state the last symbol led to.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q3 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q1, epsilon) -> (q2, 0)
+    (q2, epsilon) -> (q3, 0)
+  }
+}

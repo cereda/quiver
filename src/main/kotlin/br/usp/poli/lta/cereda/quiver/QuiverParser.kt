@@ -729,36 +729,51 @@ class Parser(private val tokens: List<Token>) {
         return left
     }
 
-    /** Parses a primary followed by `,`, `+`, `-` combinators and function calls. */
+    /**
+     * Parses a term: an operand, the arithmetic operators over it, and the
+     * comma that makes a pair out of two terms.
+     *
+     * The arithmetic operators are left-associative, so `a + b + c` is
+     * `(a + b) + c`, and a term may be followed by a comma, so the elements of
+     * a pair may be arithmetic expressions, as in `($n + 1, $m)`.
+     */
     private fun parsePair(): Expr {
-        val left = parsePrimary()
-        return when {
-            // Function application: f(arg), only for a named function symbol,
-            // which is unambiguous (a grouped/pair expression is never followed
-            // by '(' in Quiver grammar).
-            isToken(Token.Lparen) && left is Expr.Sym -> {
+        var term = parseOperand()
+        while (true) {
+            if (isToken(Token.Plus)) {
                 advance()
-                val arg = parseExpr()
-                expect(Token.Rparen)
-                Expr.App(left, arg)
-            }
-
-            isToken(Token.Comma) -> {
+                term = Expr.Plus(term, parseOperand())
+            } else if (isToken(Token.Minus)) {
                 advance()
-                Expr.Pair(left, parsePair())
+                term = Expr.Minus(term, parseOperand())
+            } else {
+                break
             }
+        }
+        return if (isToken(Token.Comma)) {
+            advance()
+            Expr.Pair(term, parsePair())
+        } else {
+            term
+        }
+    }
 
-            isToken(Token.Plus) -> {
-                advance()
-                Expr.Plus(left, parsePrimary())
-            }
-
-            isToken(Token.Minus) -> {
-                advance()
-                Expr.Minus(left, parsePrimary())
-            }
-
-            else -> left
+    /**
+     * Parses an operand of an arithmetic expression: a primary, or the
+     * application of a named function to an argument.
+     */
+    private fun parseOperand(): Expr {
+        val primary = parsePrimary()
+        // Function application: f(arg), only for a named function symbol,
+        // which is unambiguous (a grouped/pair expression is never followed
+        // by '(' in Quiver grammar).
+        return if (isToken(Token.Lparen) && primary is Expr.Sym) {
+            advance()
+            val arg = parseExpr()
+            expect(Token.Rparen)
+            Expr.App(primary, arg)
+        } else {
+            primary
         }
     }
 
@@ -798,17 +813,17 @@ class Parser(private val tokens: List<Token>) {
 
         is Token.Plus -> {
             advance()
-            Expr.Plus(Expr.IntLit(BigInteger.ZERO), parsePrimary()) // unary plus, treat as identity
+            Expr.Plus(Expr.IntLit(BigInteger.ZERO), parseOperand()) // unary plus, treat as identity
         }
 
         is Token.Minus -> {
             advance()
-            Expr.Minus(Expr.IntLit(BigInteger.ZERO), parsePrimary()) // unary minus
+            Expr.Minus(Expr.IntLit(BigInteger.ZERO), parseOperand()) // unary minus
         }
 
         is Token.IntLit -> {
             advance()
-            parseIntSuffix(t.n)
+            Expr.IntLit(t.n)
         }
 
         is Token.BoolTrue -> {
@@ -977,16 +992,6 @@ class Parser(private val tokens: List<Token>) {
             return Expr.Bind(name, rhs)
         }
         return Expr.Sym(name)
-    }
-
-    /** Parses an integer literal optionally followed by `+ term` (e.g. `2 + 1`). */
-    private fun parseIntSuffix(n: BigInteger): Expr {
-        if (peek() is Token.Plus) {
-            advance()
-            val right = parsePrimary()
-            return Expr.Plus(Expr.IntLit(n), right)
-        }
-        return Expr.IntLit(n)
     }
 
     /** Consumes an identifier token and wraps it as an [Expr.Sym]. */

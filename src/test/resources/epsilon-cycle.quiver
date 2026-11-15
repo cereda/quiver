@@ -1,0 +1,13 @@
+# The epsilon transition: a cycle among the internal transitions that the
+# rules cannot break. The program never finishes, and it is refused when it
+# is loaded.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, epsilon) -> (q1, 0)
+    (q1, epsilon) -> (q0, 0)
+    (q0, a) -> (q2, 0)
+  }
+}

@@ -877,6 +877,15 @@ class QuiverTest {
     }
 
     @Test
+    fun `the trace of a sweep names the transition it sweeps`() {
+        val output = captureStderr { runQuiver(load("sweep.quiver"), "bz", trace = true) }
+        assertTrue(
+            output.contains("sweep: (q0,\$s) -> (\$t,\$v) on (q0,a)->(q0,0)"),
+            "Expected the sweep of the first transition, got: $output",
+        )
+    }
+
+    @Test
     fun `inspect example accepts ab`() {
         assertEquals(true, runQuiver(load("inspect.quiver"), "ab"))
     }
@@ -898,6 +907,55 @@ class QuiverTest {
         val output = captureStdout { runQuiver(load("inspect.quiver"), "ab") }
         assertTrue(output.contains("2"), "Expected the size of the sequence, got: $output")
         assertTrue(output.contains("true"), "Expected the emptiness of q2, got: $output")
+    }
+
+    @Test
+    fun `counter machine example accepts an even number`() {
+        assertEquals(true, runQuiver(load("counter-machine.quiver"), "aaz"))
+    }
+
+    @Test
+    fun `counter machine example accepts the empty number`() {
+        assertEquals(true, runQuiver(load("counter-machine.quiver"), "z"))
+    }
+
+    @Test
+    fun `counter machine example rejects an odd number`() {
+        assertEquals(false, runQuiver(load("counter-machine.quiver"), "aaaz"))
+    }
+
+    @Test
+    fun `counter machine example rejects an input without the marker`() {
+        // The marker is what starts the machine: without it, the automaton
+        // rests on the loading state, which is not accepting.
+        assertEquals(false, runQuiver(load("counter-machine.quiver"), "aa"))
+    }
+
+    @Test
+    fun `counter machine example rejects an input after the machine halts`() {
+        assertEquals(false, runQuiver(load("counter-machine.quiver"), "aazz"))
+    }
+
+    @Test
+    fun `counter machine example computes a long number`() {
+        // The counters are arbitrary-precision, and the budget covers the
+        // internal steps of the simulation.
+        val input = "a".repeat(100) + "z"
+        assertEquals(true, runQuiver(load("counter-machine.quiver"), input))
+    }
+
+    @Test
+    fun `counter machine example reports the closure failure when the budget is small`() {
+        // The six symbols of the loading phase and the marker take seven
+        // units of the budget, so the closure takes one internal step and
+        // then the budget is exhausted.
+        val ex =
+            assertFailsWith<EpsilonClosureException> {
+                runQuiver(load("counter-machine.quiver"), "aaaaaaz", maxSteps = 8)
+            }
+        val msg = ex.message ?: ""
+        assertContains(msg, "Epsilon closure did not terminate")
+        assertContains(msg, "after 1 internal steps")
     }
 
     // ---------------------------------------------------------------------

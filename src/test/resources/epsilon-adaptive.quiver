@@ -1,0 +1,33 @@
+# The epsilon transition: the rules rewrite the internal transition, so the
+# cycle the transition alone would form is broken by the program itself.
+#
+# The internal transition counts the steps: after four of them, it goes away
+# and the closure ends.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, epsilon) -> (q0, 0)
+    (q0, a) -> (q2, 0)
+  }
+}
+
+(q0, epsilon) -> ($to, 0) => {
+  (q0, epsilon) -> ($to, 0) => _
+  _ => (q0, epsilon) -> ($to, 1)
+}
+
+(q0, epsilon) -> ($to, 1) => {
+  (q0, epsilon) -> ($to, 1) => _
+  _ => (q0, epsilon) -> ($to, 2)
+}
+
+(q0, epsilon) -> ($to, 2) => {
+  (q0, epsilon) -> ($to, 2) => _
+  _ => (q0, epsilon) -> ($to, 3)
+}
+
+(q0, epsilon) -> ($to, 3) => {
+  (q0, epsilon) -> ($to, 3) => _
+}
