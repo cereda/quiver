@@ -428,6 +428,194 @@ class QuiverInterpreterTest {
     }
 
     // ---------------------------------------------------------------------
+    // The sweep.
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `a sweep fires once per matching transition`() {
+        val automaton = sweepAutomaton()
+        val rule = rule("(q1, c) -> (\$to, \$n)", "each (q0, \$s) -> (\$t, \$v) => { _ => (q0, \$s) -> (q2, \$v) }")
+        val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
+        assertTrue(recognize("ac", automaton, strategy))
+        // Both transitions that leave q0 were retargeted to q2.
+        assertEquals(2, automaton.transitions.count { it.from == "q0" && it.to == "q2" })
+    }
+
+    @Test
+    fun `the bindings of a sweep are per firing`() {
+        val automaton = sweepAutomaton()
+        val rule = rule("(q1, c) -> (\$to, \$n)", "each (q0, \$s) -> (\$t, \$v) => { _ => (q1, \$s) -> (q2, \$s) }")
+        val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
+        assertTrue(recognize("ac", automaton, strategy))
+        // Each firing bound the symbol of the transition it swept.
+        val inserted = automaton.transitions.filter { it.from == "q1" }
+        assertEquals(3, inserted.size)
+        assertTrue(inserted.any { it.symbol == "a" && it.value == Value.Symbol("a") })
+        assertTrue(inserted.any { it.symbol == "b" && it.value == Value.Symbol("b") })
+    }
+
+    @Test
+    fun `a sweep that matches nothing changes nothing`() {
+        val automaton = sweepAutomaton()
+        val rule = rule("(q1, c) -> (\$to, \$n)", "each (q9, \$s) -> (\$t, \$v) => { _ => (q9, \$s) -> (q0, \$v) }")
+        val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
+        assertTrue(recognize("ac", automaton, strategy))
+        assertEquals(0, automaton.transitions.count { it.from == "q9" })
+        assertEquals(2, automaton.transitions.count { it.from == "q0" })
+    }
+
+    @Test
+    fun `a sweep may remove the transitions it matches`() {
+        val automaton = sweepAutomaton()
+        val rule = rule("(q1, c) -> (\$to, \$n)", "each (q0, \$s) -> (\$t, \$v) => { (q0, \$s) -> (\$t, \$v) => _ }")
+        val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
+        assertTrue(recognize("ac", automaton, strategy))
+        assertEquals(0, automaton.transitions.count { it.from == "q0" })
+    }
+
+    @Test
+    fun `a sweep sees the automaton as it was when it started`() {
+        val automaton = sweepAutomaton()
+        // The inserted transition matches the pattern of the sweep, so a sweep
+        // that did not work on a snapshot would never end.
+        val rule = rule("(q1, c) -> (\$to, \$n)", "each (q0, \$s) -> (\$t, \$v) => { _ => (q0, \$s) -> (q2, \$v) }")
+        val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
+        assertTrue(recognize("ac", automaton, strategy))
+        assertEquals(3, automaton.transitions.size)
+    }
+
+    @Test
+    fun `a sweep may appear in a nested block`() {
+        val automaton = sweepAutomaton()
+        val rule =
+            rule(
+                "(q1, c) -> (\$to, \$n)",
+                "_ => { each (q0, \$s) -> (\$t, \$v) => { _ => (q0, \$s) -> (q2, \$v) } }",
+            )
+        val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
+        assertTrue(recognize("ac", automaton, strategy))
+        assertEquals(2, automaton.transitions.count { it.from == "q0" && it.to == "q2" })
+    }
+
+    @Test
+    fun `the bindings of a firing do not leak into the next`() {
+        val automaton = sweepAutomaton()
+        // The pattern binds $s twice, so the second occurrence is occurrence
+        // checked: only the transition whose symbol is the same as the target
+        // matches.
+        val rule =
+            rule(
+                "(q1, c) -> (\$to, \$n)",
+                "each (q0, \$s) -> (\$s, \$v) => { _ => (q0, \$s) -> (q2, \$v) }",
+            )
+        val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
+        assertTrue(recognize("ac", automaton, strategy))
+        assertEquals(0, automaton.transitions.count { it.from == "q0" && it.to == "q2" })
+    }
+
+    // ---------------------------------------------------------------------
+    // The inspection primitives.
+    // ---------------------------------------------------------------------
+
+    @Test
+    fun `targets-from returns the distinct targets of a state`() {
+        val automaton = sweepAutomaton()
+        val value = evalExpr(Expr.TargetsFrom(Expr.Sym("q0")), emptyMap(), "q0", automaton)
+        assertEquals(Value.Seq(listOf(Value.Symbol("q1"))), value)
+    }
+
+    @Test
+    fun `targets-from of a state without transitions is empty`() {
+        val automaton = sweepAutomaton()
+        val value = evalExpr(Expr.TargetsFrom(Expr.Sym("q9")), emptyMap(), "q0", automaton)
+        assertEquals(Value.Seq(emptyList()), value)
+    }
+
+    @Test
+    fun `symbols-from returns the distinct symbols of a state`() {
+        val automaton = sweepAutomaton()
+        val value = evalExpr(Expr.SymbolsFrom(Expr.Sym("q0")), emptyMap(), "q0", automaton)
+        assertEquals(Value.Seq(listOf(Value.Symbol("a"), Value.Symbol("b"))), value)
+    }
+
+    @Test
+    fun `is-empty tells whether a sequence has no elements`() {
+        val automaton = sweepAutomaton()
+        val empty = evalExpr(Expr.IsEmpty(Expr.TargetsFrom(Expr.Sym("q9"))), emptyMap(), "q0", automaton)
+        assertEquals(Value.BoolVal(true), empty)
+        val full = evalExpr(Expr.IsEmpty(Expr.TargetsFrom(Expr.Sym("q0"))), emptyMap(), "q0", automaton)
+        assertEquals(Value.BoolVal(false), full)
+    }
+
+    @Test
+    fun `size counts the elements of a sequence`() {
+        val automaton = sweepAutomaton()
+        val value = evalExpr(Expr.Size(Expr.SymbolsFrom(Expr.Sym("q0"))), emptyMap(), "q0", automaton)
+        assertEquals(Value.IntVal(2), value)
+    }
+
+    @Test
+    fun `is-empty rejects a value that is not a sequence`() {
+        val automaton = sweepAutomaton()
+        val error =
+            assertFailsWith<QuiverException> { evalExpr(Expr.IsEmpty(Expr.IntLit(1)), emptyMap(), "q0", automaton) }
+        assertContains(error.message ?: "", "is-empty expects a sequence value")
+    }
+
+    @Test
+    fun `size rejects a value that is not a sequence`() {
+        val automaton = sweepAutomaton()
+        val error =
+            assertFailsWith<QuiverException> { evalExpr(Expr.Size(Expr.IntLit(1)), emptyMap(), "q0", automaton) }
+        assertContains(error.message ?: "", "size expects a sequence value")
+    }
+
+    @Test
+    fun `targets-from rejects a state that is not a symbol`() {
+        val automaton = sweepAutomaton()
+        val error =
+            assertFailsWith<QuiverException> { evalExpr(Expr.TargetsFrom(Expr.IntLit(1)), emptyMap(), "q0", automaton) }
+        assertContains(error.message ?: "", "targets-from expects a state symbol")
+    }
+
+    @Test
+    fun `symbols-from rejects a state that is not a symbol`() {
+        val automaton = sweepAutomaton()
+        val error =
+            assertFailsWith<QuiverException> { evalExpr(Expr.SymbolsFrom(Expr.IntLit(1)), emptyMap(), "q0", automaton) }
+        assertContains(error.message ?: "", "symbols-from expects a state symbol")
+    }
+
+    @Test
+    fun `an empty sequence is false in a guard`() {
+        val automaton = sweepAutomaton()
+        // The guard is the empty sequence itself, so it is false and the rule
+        // does not fire: the transition keeps its original target.
+        val rule = rule("(q1, c) -> (\$to, \$n) when targets-from(q9)", "_ => (q1, c) -> (q3, 0)")
+        val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
+        recognize("ac", automaton, strategy)
+        assertEquals("q2", automaton.transitions.first { it.from == "q1" && it.symbol == "c" }.to)
+    }
+
+    @Test
+    fun `a non-empty sequence is true in a guard`() {
+        val automaton = sweepAutomaton()
+        val rule = rule("(q1, c) -> (\$to, \$n) when targets-from(q0)", "_ => (q1, c) -> (q3, 0)")
+        val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
+        recognize("ac", automaton, strategy)
+        assertEquals("q3", automaton.transitions.first { it.from == "q1" && it.symbol == "c" }.to)
+    }
+
+    @Test
+    fun `is-empty is true in a guard`() {
+        val automaton = sweepAutomaton()
+        val rule = rule("(q1, c) -> (\$to, \$n) when is-empty(targets-from(q9))", "_ => (q1, c) -> (q3, 0)")
+        val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
+        recognize("ac", automaton, strategy)
+        assertEquals("q3", automaton.transitions.first { it.from == "q1" && it.symbol == "c" }.to)
+    }
+
+    // ---------------------------------------------------------------------
     // The non-deterministic recognizer.
     // ---------------------------------------------------------------------
 
@@ -676,6 +864,19 @@ class QuiverInterpreterTest {
 
     /** Builds an empty automaton, used when a value is evaluated in isolation. */
     private fun emptyAutomaton(): Automaton = Automaton("q0", mutableSetOf("q0"), mutableSetOf(), mutableListOf())
+
+    /**
+     * Builds the automaton the sweep tests work on: two transitions leave `q0`
+     * and one leaves `q1`.
+     */
+    private fun sweepAutomaton(): Automaton {
+        val automaton = emptyAutomaton()
+        automaton.addTransition("q0", "a", "q1", Value.IntVal(0))
+        automaton.addTransition("q0", "b", "q1", Value.IntVal(0))
+        automaton.addTransition("q1", "c", "q2", Value.IntVal(0))
+        automaton.accepting.add("q2")
+        return automaton
+    }
 
     /**
      * Builds a rule from its pattern and its body.

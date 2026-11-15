@@ -196,6 +196,10 @@ data class Rule(val pattern: Expr, val guard: Expr?, val clauses: List<Clause>)
  *
  * Either side may be `_` (the wildcard, meaning "no term"). The right side may
  * also be a nested block of clauses `{ ... }`, introduced by `=> { ... }`.
+ *
+ * A clause may also be a **sweep**, `each <pattern> => { ... }`: its left side
+ * is the pattern the sweep matches, and its right side is the block of clauses
+ * the sweep runs once per matching transition.
  */
 sealed class ClauseRight {
     /**
@@ -214,12 +218,24 @@ sealed class ClauseRight {
      * @property clauses the nested clauses, executed in order.
      */
     data class Block(val clauses: List<Clause>) : ClauseRight()
+
+    /**
+     * A sweep, written `each <pattern> => { ... }`.
+     *
+     * The sweep matches the pattern of its clause against every transition of
+     * the automaton, and runs the nested clauses once per matching transition.
+     *
+     * @property clauses the nested clauses, executed once per matching
+     *   transition.
+     */
+    data class Sweep(val clauses: List<Clause>) : ClauseRight()
 }
 
 /**
  * A single clause `left => right` inside a rule body or nested block.
  *
- * @property left the term matched on the left of `=>`.
+ * @property left the term matched on the left of `=>`; for a sweep, the
+ *   pattern the sweep matches against the transitions of the automaton.
  * @property right the action performed on the right of `=>`.
  */
 data class Clause(val left: Expr, val right: ClauseRight)
@@ -367,6 +383,40 @@ sealed class Expr {
      *   returned.
      */
     data class TransitionsFrom(val state: Expr) : Expr()
+
+    /**
+     * The distinct targets of the transitions leaving a state:
+     * `targets-from(state)` returns a Seq of symbols.
+     *
+     * @property state the expression denoting the state whose targets are
+     *   returned.
+     */
+    data class TargetsFrom(val state: Expr) : Expr()
+
+    /**
+     * The distinct symbols of the transitions leaving a state:
+     * `symbols-from(state)` returns a Seq of symbols.
+     *
+     * @property state the expression denoting the state whose symbols are
+     *   returned.
+     */
+    data class SymbolsFrom(val state: Expr) : Expr()
+
+    /**
+     * The emptiness test: `is-empty(expr)` returns whether the sequence
+     * denoted by `expr` has no elements.
+     *
+     * @property expr the expression denoting the sequence.
+     */
+    data class IsEmpty(val expr: Expr) : Expr()
+
+    /**
+     * The size of a sequence: `size(expr)` returns the number of elements of
+     * the sequence denoted by `expr`.
+     *
+     * @property expr the expression denoting the sequence.
+     */
+    data class Size(val expr: Expr) : Expr()
 
     /** Clone the current automaton: `clone-automaton()`. */
     object CloneAutomaton : Expr()

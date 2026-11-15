@@ -335,4 +335,60 @@ class QuiverParserTest {
         val error = assertFailsWith<QuiverException> { lex("a\nb < c") }
         assertTrue(error.line == 2, "Expected the error on line 2, got line ${error.line}")
     }
+
+    @Test
+    fun `a sweep clause is parsed`() {
+        val rule = parseSource("(q0, a) -> (\$x, \$n) => { each (q0, \$s) -> (\$t, \$v) => { _ => 1 } }")
+            .filterIsInstance<Decl.RuleDecl>()
+            .single()
+            .rule
+        assertEquals(1, rule.clauses.size)
+        val clause = rule.clauses.single()
+        val pattern =
+            Expr.Arrow(
+                Expr.Pair(Expr.Sym("q0"), Expr.Sym("\$s")),
+                Expr.Pair(Expr.Sym("\$t"), Expr.Sym("\$v")),
+            )
+        assertEquals(pattern, clause.left)
+        val sweep = clause.right as ClauseRight.Sweep
+        assertEquals(1, sweep.clauses.size)
+    }
+
+    @Test
+    fun `a sweep clause may appear in a nested block`() {
+        val rule =
+            parseSource("(q0, a) -> (\$x, \$n) => { _ => { each (q0, \$s) -> (\$t, \$v) => { _ => 1 } } }")
+                .filterIsInstance<Decl.RuleDecl>()
+                .single()
+                .rule
+        val block = rule.clauses.single().right as ClauseRight.Block
+        val sweep = block.clauses.single().right as ClauseRight.Sweep
+        assertEquals(1, sweep.clauses.size)
+    }
+
+    @Test
+    fun `a sweep clause without a block is a syntax error`() {
+        val source = "(q0, a) -> (\$x, \$n) => { each (q0, \$s) -> (\$t, \$v) => 1 }"
+        val error = assertFailsWith<QuiverException> { parseSource(source) }
+        assertContains(error.message ?: "", "Expected LCurly")
+    }
+
+    @Test
+    fun `the inspection primitives are parsed`() {
+        val decls = parseSource("x <- targets-from(q0) => { _ => 1 }")
+        val bind = (decls.single() as Decl.RuleDecl).rule.pattern
+        assertEquals(Expr.TargetsFrom(Expr.Sym("q0")), (bind as Expr.Bind).expr)
+
+        val symbols = parseSource("x <- symbols-from(q0) => { _ => 1 }")
+        val symbolBind = (symbols.single() as Decl.RuleDecl).rule.pattern
+        assertEquals(Expr.SymbolsFrom(Expr.Sym("q0")), (symbolBind as Expr.Bind).expr)
+
+        val empty = parseSource("x <- is-empty(targets-from(q0)) => { _ => 1 }")
+        val emptyBind = (empty.single() as Decl.RuleDecl).rule.pattern
+        assertEquals(Expr.IsEmpty(Expr.TargetsFrom(Expr.Sym("q0"))), (emptyBind as Expr.Bind).expr)
+
+        val size = parseSource("x <- size(targets-from(q0)) => { _ => 1 }")
+        val sizeBind = (size.single() as Decl.RuleDecl).rule.pattern
+        assertEquals(Expr.Size(Expr.TargetsFrom(Expr.Sym("q0"))), (sizeBind as Expr.Bind).expr)
+    }
 }

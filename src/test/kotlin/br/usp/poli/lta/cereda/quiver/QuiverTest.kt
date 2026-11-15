@@ -842,6 +842,64 @@ class QuiverTest {
         assertFalse(survives, "The (q1,a) transition was not removed")
     }
 
+    @Test
+    fun `sweep example accepts bz`() {
+        assertEquals(true, runQuiver(load("sweep.quiver"), "bz"))
+    }
+
+    @Test
+    fun `sweep example rejects b`() {
+        assertEquals(false, runQuiver(load("sweep.quiver"), "b"))
+    }
+
+    @Test
+    fun `sweep example rejects bzz`() {
+        assertEquals(false, runQuiver(load("sweep.quiver"), "bzz"))
+    }
+
+    @Test
+    fun `sweep example retargets every transition that leaves q0`() {
+        val automaton = automatonOf("sweep.quiver")
+        val strategy = strategyOf("sweep.quiver")
+        step("q0", "b", automaton, strategy)
+        step("q1", "z", automaton, strategy)
+        val retargeted = automaton.transitions.filter { it.from == "q0" }
+        assertEquals(3, retargeted.size)
+        assertTrue(retargeted.all { it.to == "q2" }, "The transitions leaving q0 were not all retargeted")
+    }
+
+    @Test
+    fun `sweep example prints the symbol of every transition it sweeps`() {
+        val output = captureStdout { runQuiver(load("sweep.quiver"), "bz") }
+        assertTrue(output.contains("a"), "Expected the symbol a, got: $output")
+        assertTrue(output.contains("b"), "Expected the symbol b, got: $output")
+        assertTrue(output.contains("c"), "Expected the symbol c, got: $output")
+    }
+
+    @Test
+    fun `inspect example accepts ab`() {
+        assertEquals(true, runQuiver(load("inspect.quiver"), "ab"))
+    }
+
+    @Test
+    fun `inspect example rejects a`() {
+        assertEquals(false, runQuiver(load("inspect.quiver"), "a"))
+    }
+
+    @Test
+    fun `inspect example prints the targets and the symbols of q0`() {
+        val output = captureStdout { runQuiver(load("inspect.quiver"), "ab") }
+        assertTrue(output.contains("[seq q0,q1]"), "Expected the targets of q0, got: $output")
+        assertTrue(output.contains("[seq a,b]"), "Expected the symbols of q0, got: $output")
+    }
+
+    @Test
+    fun `inspect example prints the size of the sequence and the emptiness of q2`() {
+        val output = captureStdout { runQuiver(load("inspect.quiver"), "ab") }
+        assertTrue(output.contains("2"), "Expected the size of the sequence, got: $output")
+        assertTrue(output.contains("true"), "Expected the emptiness of q2, got: $output")
+    }
+
     // ---------------------------------------------------------------------
     // Non-determinism: multiple transitions per (state, symbol) key,
     // each explored in parallel on its own automaton clone.

@@ -19,18 +19,20 @@ test suite exercises them.
 7. [`guard-literal.quiver`: the boolean literals](#guard-literalquiver-the-boolean-literals)
 8. [`emit.quiver`: output](#emitquiver-output)
 9. [`primitives.quiver`: the adaptive primitives](#primitivesquiver-the-adaptive-primitives)
-10. [`closure.quiver`: closures as transition values](#closurequiver-closures-as-transition-values)
-11. [`strategy.quiver`: the rewriting strategies](#strategyquiver-the-rewriting-strategies)
-12. [`seq.quiver`: sequences](#seqquiver-sequences)
-13. [`binding.quiver`: bindings](#bindingquiver-bindings)
-14. [`adaptive-insert.quiver`: inserting a transition](#adaptive-insertquiver-inserting-a-transition)
-15. [`adaptive-threshold.quiver`: retargeting a transition](#adaptive-thresholdquiver-retargeting-a-transition)
-16. [`adaptive-remove.quiver`: removing a transition](#adaptive-removequiver-removing-a-transition)
-17. [`include-main.quiver` and `include-sub.quiver`: modularity](#include-mainquiver-modularity)
-18. [`nondet.quiver`: non-determinism without rules](#nondetquiver-non-determinism-without-rules)
-19. [`nondet-adaptive.quiver`: per-path adaptive actions](#nondet-adaptivequiver-per-path-adaptive-actions)
-20. [`nondet-strategy.quiver`: non-determinism with the `all` strategy](#nondet-strategyquiver-non-determinism-with-the-all-strategy)
-21. [`nondet-repeat.quiver`: non-determinism with the `repeat` strategy](#nondet-repeatquiver-non-determinism-with-the-repeat-strategy)
+10. [`sweep.quiver`: a sweep over the transitions](#sweepquiver-a-sweep-over-the-transitions)
+11. [`inspect.quiver`: the inspection primitives](#inspectquiver-the-inspection-primitives)
+12. [`closure.quiver`: closures as transition values](#closurequiver-closures-as-transition-values)
+13. [`strategy.quiver`: the rewriting strategies](#strategyquiver-the-rewriting-strategies)
+14. [`seq.quiver`: sequences](#seqquiver-sequences)
+15. [`binding.quiver`: bindings](#bindingquiver-bindings)
+16. [`adaptive-insert.quiver`: inserting a transition](#adaptive-insertquiver-inserting-a-transition)
+17. [`adaptive-threshold.quiver`: retargeting a transition](#adaptive-thresholdquiver-retargeting-a-transition)
+18. [`adaptive-remove.quiver`: removing a transition](#adaptive-removequiver-removing-a-transition)
+19. [`include-main.quiver` and `include-sub.quiver`: modularity](#include-mainquiver-modularity)
+20. [`nondet.quiver`: non-determinism without rules](#nondetquiver-non-determinism-without-rules)
+21. [`nondet-adaptive.quiver`: per-path adaptive actions](#nondet-adaptivequiver-per-path-adaptive-actions)
+22. [`nondet-strategy.quiver`: non-determinism with the `all` strategy](#nondet-strategyquiver-non-determinism-with-the-all-strategy)
+23. [`nondet-repeat.quiver`: non-determinism with the `repeat` strategy](#nondet-repeatquiver-non-determinism-with-the-repeat-strategy)
 
 ## Running an example
 
@@ -38,7 +40,7 @@ Every example is a Quiver source file. The interpreter recognizes one input
 string against it:
 
 ```bash
-java -jar build/libs/quiver-1.0.2.jar -i src/main/resources/abn.quiver aabb
+java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/abn.quiver aabb
 ```
 
 The command prints `true` when the input is recognized and `false` otherwise.
@@ -46,14 +48,14 @@ The `--trace` option prints what happens at every step on the standard error
 stream, which is how the traces below were produced:
 
 ```bash
-java -jar build/libs/quiver-1.0.2.jar -i src/main/resources/abn.quiver aabb --trace
+java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/abn.quiver aabb --trace
 ```
 
 The interactive REPL loads the same files and recognizes as many inputs as you
 like:
 
 ```bash
-java -jar build/libs/quiver-1.0.2.jar
+java -jar build/libs/quiver-1.1.0.jar
 ```
 
 ```
@@ -455,6 +457,142 @@ again. The third line is the copy of the automaton.
 Note what `transitions-from` is **not**: it is not a query for one specific
 transition. It returns everything that leaves a state, and the program has to
 pick what it wants from the sequence.
+
+## `sweep.quiver`: a sweep over the transitions
+
+A **sweep** is a clause inside a rule body, written `each <pattern> => { ... }`.
+The pattern is matched against every transition of the automaton, and the block
+runs once per matching transition, with the pattern's variables bound per
+firing.
+
+This program retargets, in one shot, every transition that leaves `q0`:
+
+```quiver
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q0, b) -> (q1, 0)
+    (q0, c) -> (q1, 0)
+    (q1, z) -> (q2, 0)
+  }
+}
+
+(q1, z) -> ($to, $n) => {
+  each (q0, $s) -> ($t, $v) => {
+    _ => emit($s)
+    _ => (q0, $s) -> (q2, $v)
+  }
+}
+```
+
+The rule fires when the automaton takes the `z`-transition out of `q1`. Its
+body sweeps the transitions that leave `q0`, and each firing prints the symbol
+of the transition it swept and retargets it to `q2`.
+
+The trace of `bz`:
+
+```
+trace step state=q0 symbol=b transition=(q0,b)->(q1,0)
+trace   no rule fired
+trace step state=q1 symbol=z transition=(q1,z)->(q2,0)
+trace   sweep: (q0,$s) -> ($t,$v) on (q0,a)->(q0,0)
+a
+trace   insert transition (q0,a)->(q2,0)
+trace   sweep: (q0,$s) -> ($t,$v) on (q0,b)->(q1,0)
+b
+trace   insert transition (q0,b)->(q2,0)
+trace   sweep: (q0,$s) -> ($t,$v) on (q0,c)->(q1,0)
+c
+trace   insert transition (q0,c)->(q2,0)
+trace   rule fired: (q1,z) -> ($to,$n)
+true
+```
+
+The `sweep` line names the pattern and the transition the firing matched; the
+letter that follows is the symbol the pattern bound to `$s` in that firing. The
+three firings are independent: each one sees its own binding.
+
+| Input | Result |
+|---|---|
+| `bz` | `true` |
+| `b` | `false` (the input ends in `q1`, which is not accepting) |
+| `bzz` | `false` (there is no transition out of `q2` on `z`) |
+
+Two details are worth noticing. The sweep matches the transitions that were
+there when it started, so the transitions it inserts are not swept by the same
+sweep: without that, the program would never end. And the actions of the
+firings apply to the live automaton, so a transition that one firing removed is
+not there for the next one to act upon.
+
+## `inspect.quiver`: the inspection primitives
+
+Four primitives inspect a sequence, or the transitions of a state:
+
+| Primitive | Meaning |
+|---|---|
+| `targets-from(state)` | the distinct targets of the transitions leaving `state` |
+| `symbols-from(state)` | the distinct symbols of the transitions leaving `state` |
+| `size(expr)` | the number of elements of a sequence |
+| `is-empty(expr)` | whether a sequence has no elements |
+
+```quiver
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q0, b) -> (q1, 0)
+    (q1, b) -> (q2, 0)
+  }
+}
+
+# Inspect the automaton on the first `a`.
+(q0, a) -> ($x, $n) => {
+  _ => emit(targets-from(q0))
+  _ => emit(symbols-from(q0))
+  _ => emit(size(targets-from(q0)))
+  _ => emit(is-empty(targets-from(q2)))
+  _ => (q0, a) -> ($x, $n + 1)
+}
+
+# A guard that reads the automaton: the rule fires only when q0 still has at
+# least one target, that is, when the automaton is not stuck.
+(q0, b) -> ($x, $n) when size(targets-from(q0)) => {
+  _ => (q0, b) -> (q2, 0)
+}
+```
+
+The trace of `ab`:
+
+```
+trace step state=q0 symbol=a transition=(q0,a)->(q0,0)
+[seq q0,q1]
+[seq a,b]
+2
+true
+trace   insert transition (q0,a)->(q0,1)
+trace   rule fired: (q0,a) -> ($x,$n)
+trace step state=q0 symbol=b transition=(q0,b)->(q1,0)
+trace   insert transition (q0,b)->(q2,0)
+trace   rule fired: (q0,b) -> ($x,$n)
+true
+```
+
+The four lines are the four primitives. The targets of `q0` are `q0` and `q1`,
+its symbols are `a` and `b`, the size of the sequence is two, and `q2` has no
+outgoing transition at all, so the sequence of its targets is empty.
+
+The guard of the second rule is an integer, and an integer is true when it is
+not zero: the rule fires because `q0` still has two targets. A sequence used
+directly as a guard follows the same rule, and is false when it is empty.
+
+| Input | Result |
+|---|---|
+| `ab` | `true` |
+| `a` | `false` (the input ends in `q0`, which is not accepting) |
+| `b` | `true` (the guard passes and the `b`-transition is retargeted to `q2`) |
 
 ## `closure.quiver`: closures as transition values
 
@@ -918,7 +1056,7 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.0.2.jar -i src/main/resources/nondet.quiver a --nondet
+java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/nondet.quiver a --nondet
 ```
 
 ## `nondet-adaptive.quiver`: per-path adaptive actions
@@ -983,8 +1121,8 @@ The key point: path q1's retargeting of `(q1,b)` does not affect path q2, and vi
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.0.2.jar -i src/main/resources/nondet-adaptive.quiver ab --nondet
-java -jar build/libs/quiver-1.0.2.jar -i src/main/resources/nondet-adaptive.quiver ac --nondet
+java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/nondet-adaptive.quiver ab --nondet
+java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/nondet-adaptive.quiver ac --nondet
 ```
 
 ## `nondet-strategy.quiver`: non-determinism with the `all` strategy
@@ -1099,6 +1237,6 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.0.2.jar -i src/main/resources/nondet-strategy.quiver a --nondet
-java -jar build/libs/quiver-1.0.2.jar -i src/main/resources/nondet-repeat.quiver a --nondet
+java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/nondet-strategy.quiver a --nondet
+java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/nondet-repeat.quiver a --nondet
 ```

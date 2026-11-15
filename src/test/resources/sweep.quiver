@@ -1,0 +1,29 @@
+# Quiver example: a sweep over the transitions of the automaton.
+#
+# A sweep is a clause inside a rule body, written `each <pattern> => { ... }`.
+# The pattern is matched against every transition of the automaton, and the
+# block runs once per matching transition, with the pattern's variables bound
+# per firing.
+#
+# Here, when the automaton takes the `z`-transition out of q1, the rule sweeps
+# every transition that leaves q0 and retargets it to q2, in one shot. The
+# sweep also prints the symbol of each transition it sweeps, so the trace
+# shows the per-firing bindings.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q0, b) -> (q1, 0)
+    (q0, c) -> (q1, 0)
+    (q1, z) -> (q2, 0)
+  }
+}
+
+(q1, z) -> ($to, $n) => {
+  each (q0, $s) -> ($t, $v) => {
+    _ => emit($s)
+    _ => (q0, $s) -> (q2, $v)
+  }
+}

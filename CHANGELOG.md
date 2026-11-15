@@ -13,6 +13,32 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-14
+
+### Added
+
+- The **sweep** clause, `each <pattern> => { clauses }`, legal inside a rule
+  body and inside a nested block. The pattern is matched against every
+  transition of the automaton, and the block runs once per matching
+  transition, with the bindings of the pattern extended per firing. The
+  transitions that match are collected before the first firing, so the sweep
+  sees the automaton as it was when it started, while the actions of the
+  firings apply to the live automaton.
+- The **inspection primitives**: `targets-from(state)`, which returns the
+  distinct targets of the transitions leaving a state, `symbols-from(state)`,
+  which returns their distinct symbols, `size(expr)`, which counts the
+  elements of a sequence, and `is-empty(expr)`, which tells whether a sequence
+  has none.
+- The example programs `sweep.quiver` and `inspect.quiver`, and their
+  walkthroughs in the examples document.
+
+### Changed
+
+- A **sequence used as a guard** is now false when it is empty, and true when
+  it is not. The truthiness of the other values is unchanged: a boolean is its
+  own truth value, an integer is true when it is not zero, and every other
+  value is true. The new `is-empty` primitive is the explicit emptiness test.
+
 ## [1.0.2] - 2026-11-14
 
 ### Fixed
@@ -65,7 +91,8 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 - The example programs and the documentation: the normative language
   reference and the step-by-step walkthrough of every example.
 
-[Unreleased]: https://github.com/cereda/quiver/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/cereda/quiver/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/cereda/quiver/tree/v1.1.0
 [1.0.2]: https://github.com/cereda/quiver/tree/v1.0.2
 [1.0.1]: https://github.com/cereda/quiver/tree/v1.0.1
 [1.0.0]: https://github.com/cereda/quiver/tree/v1.0.0

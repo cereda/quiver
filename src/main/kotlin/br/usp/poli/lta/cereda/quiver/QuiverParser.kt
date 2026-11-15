@@ -84,11 +84,26 @@ sealed class Token {
     /** The `include` keyword token. */
     object Include : Token()
 
+    /** The `each` keyword token, which introduces a sweep clause. */
+    object Each : Token()
+
+    /** The `size` keyword token (the sequence-size primitive). */
+    object Size : Token()
+
     /** The `$state` adaptive primitive token. */
     data class StateRef(override val line: Int, override val column: Int) : Token()
 
     /** The `transitions-from` adaptive primitive token. */
     data class TransitionsFrom(override val line: Int, override val column: Int) : Token()
+
+    /** The `targets-from` adaptive primitive token. */
+    data class TargetsFrom(override val line: Int, override val column: Int) : Token()
+
+    /** The `symbols-from` adaptive primitive token. */
+    data class SymbolsFrom(override val line: Int, override val column: Int) : Token()
+
+    /** The `is-empty` primitive token. */
+    data class IsEmpty(override val line: Int, override val column: Int) : Token()
 
     /** The `clone-automaton` adaptive primitive token. */
     data class CloneAutomaton(override val line: Int, override val column: Int) : Token()
@@ -134,6 +149,8 @@ private val KEYWORDS = mapOf(
     "false" to Token.BoolFalse,
     "emit" to Token.Emit,
     "include" to Token.Include,
+    "each" to Token.Each,
+    "size" to Token.Size,
 )
 
 /**
@@ -149,8 +166,31 @@ private const val IDENTIFIER_CONTINUATION_CHARS = "\$._/"
 /** The `transitions-from` adaptive primitive, matched before the identifier scan. */
 private const val TRANSITIONS_FROM_KEYWORD = "transitions-from"
 
+/** The `targets-from` adaptive primitive, matched before the identifier scan. */
+private const val TARGETS_FROM_KEYWORD = "targets-from"
+
+/** The `symbols-from` adaptive primitive, matched before the identifier scan. */
+private const val SYMBOLS_FROM_KEYWORD = "symbols-from"
+
+/** The `is-empty` primitive, matched before the identifier scan. */
+private const val IS_EMPTY_KEYWORD = "is-empty"
+
 /** The `clone-automaton` adaptive primitive, matched before the identifier scan. */
 private const val CLONE_AUTOMATON_KEYWORD = "clone-automaton"
+
+/**
+ * The hyphenated primitives, matched before the generic identifier scan: the
+ * hyphen is not a character an identifier may contain, so these words would
+ * otherwise be lexed as two identifiers.
+ */
+private val HYPHENATED_KEYWORDS =
+    listOf(
+        TRANSITIONS_FROM_KEYWORD,
+        TARGETS_FROM_KEYWORD,
+        SYMBOLS_FROM_KEYWORD,
+        IS_EMPTY_KEYWORD,
+        CLONE_AUTOMATON_KEYWORD,
+    )
 
 /**
  * The Quiver lexer: turns a source string into a token list, tracking line and
@@ -326,7 +366,7 @@ private class Lexer(private val source: String) {
     /** Lexes a hyphenated primitive, a `$state` reference, or an identifier. */
     private fun lexIdentifier() {
         // Multi-char keywords with hyphens are matched before the generic scan.
-        for (keyword in listOf(TRANSITIONS_FROM_KEYWORD, CLONE_AUTOMATON_KEYWORD)) {
+        for (keyword in HYPHENATED_KEYWORDS) {
             if (source.startsWith(keyword, i)) {
                 emit(keywordPrimitive(keyword), keyword.length)
                 return
@@ -348,6 +388,9 @@ private class Lexer(private val source: String) {
     /** Returns the token kind of a hyphenated primitive keyword. */
     private fun keywordPrimitive(keyword: String): Token = when (keyword) {
         TRANSITIONS_FROM_KEYWORD -> Token.TransitionsFrom(tokenLine, tokenColumn)
+        TARGETS_FROM_KEYWORD -> Token.TargetsFrom(tokenLine, tokenColumn)
+        SYMBOLS_FROM_KEYWORD -> Token.SymbolsFrom(tokenLine, tokenColumn)
+        IS_EMPTY_KEYWORD -> Token.IsEmpty(tokenLine, tokenColumn)
         else -> Token.CloneAutomaton(tokenLine, tokenColumn)
     }
 }
@@ -640,21 +683,28 @@ class Parser(private val tokens: List<Token>) {
         while (!isToken(Token.RCurly)) {
             if (isToken(Token.Comment("", 0, 0))) {
                 advance()
-                continue
-            }
-            // Try to read a left-hand side; a real clause is followed by `=>`.
-            // The lookahead probe may legitimately fail mid-expression: the
-            // failure is expected, the token stream recovers by the forward
-            // progress guarantee below.
-            val left =
-                try {
-                    parseExpr()
-                } catch (expectedException: QuiverException) {
-                    null
+            } else if (isToken(Token.Each)) {
+                // A sweep is a clause of its own: `each <pattern> => { clauses }`.
+                advance() // each
+                val pattern = parseExpr()
+                expect(Token.DoubleArrow) // =>
+                expect(Token.LCurly) // {
+                clauses += Clause(pattern, ClauseRight.Sweep(parseClausesUntilRCurly()))
+            } else {
+                // Try to read a left-hand side; a real clause is followed by `=>`.
+                // The lookahead probe may legitimately fail mid-expression: the
+                // failure is expected, the token stream recovers by the forward
+                // progress guarantee below.
+                val left =
+                    try {
+                        parseExpr()
+                    } catch (expectedException: QuiverException) {
+                        null
+                    }
+                if (left != null && isToken(Token.DoubleArrow)) {
+                    advance()
+                    clauses += Clause(left, parseClauseRight())
                 }
-            if (left != null && isToken(Token.DoubleArrow)) {
-                advance()
-                clauses += Clause(left, parseClauseRight())
             }
             // Guarantee forward progress to avoid infinite loops on bare statements.
             if (pos == lastPos) advance()
@@ -722,6 +772,14 @@ class Parser(private val tokens: List<Token>) {
         }
 
         is Token.TransitionsFrom -> parseTransitionsFrom()
+
+        is Token.TargetsFrom -> parseTargetsFrom()
+
+        is Token.SymbolsFrom -> parseSymbolsFrom()
+
+        is Token.IsEmpty -> parseIsEmpty()
+
+        is Token.Size -> parseSize()
 
         is Token.CloneAutomaton -> parseCloneAutomaton()
 
@@ -798,6 +856,42 @@ class Parser(private val tokens: List<Token>) {
         val inner = parseExpr()
         expect(Token.Rparen) // )
         return Expr.TransitionsFrom(inner)
+    }
+
+    /** Parses `targets-from(state)`, consuming the keyword. */
+    private fun parseTargetsFrom(): Expr {
+        advance() // targets-from
+        expect(Token.Lparen) // (
+        val inner = parseExpr()
+        expect(Token.Rparen) // )
+        return Expr.TargetsFrom(inner)
+    }
+
+    /** Parses `symbols-from(state)`, consuming the keyword. */
+    private fun parseSymbolsFrom(): Expr {
+        advance() // symbols-from
+        expect(Token.Lparen) // (
+        val inner = parseExpr()
+        expect(Token.Rparen) // )
+        return Expr.SymbolsFrom(inner)
+    }
+
+    /** Parses `is-empty(expr)`, consuming the keyword. */
+    private fun parseIsEmpty(): Expr {
+        advance() // is-empty
+        expect(Token.Lparen) // (
+        val inner = parseExpr()
+        expect(Token.Rparen) // )
+        return Expr.IsEmpty(inner)
+    }
+
+    /** Parses `size(expr)`, consuming the keyword. */
+    private fun parseSize(): Expr {
+        advance() // size
+        expect(Token.Lparen) // (
+        val inner = parseExpr()
+        expect(Token.Rparen) // )
+        return Expr.Size(inner)
     }
 
     /** Parses `clone-automaton()`, consuming the keyword. */

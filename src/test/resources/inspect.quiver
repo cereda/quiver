@@ -1,0 +1,32 @@
+# Quiver example: the inspection primitives.
+#
+# `targets-from(q)` returns the distinct targets of the transitions that leave
+# the state q, `symbols-from(q)` returns their distinct symbols, `size(e)`
+# counts the elements of a sequence and `is-empty(e)` tells whether a sequence
+# has none. The four are ordinary expressions, so they may be used in guards
+# and in the right-hand side of a clause.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q0, 0)
+    (q0, b) -> (q1, 0)
+    (q1, b) -> (q2, 0)
+  }
+}
+
+# Inspect the automaton on the first `a`.
+(q0, a) -> ($x, $n) => {
+  _ => emit(targets-from(q0))
+  _ => emit(symbols-from(q0))
+  _ => emit(size(targets-from(q0)))
+  _ => emit(is-empty(targets-from(q2)))
+  _ => (q0, a) -> ($x, $n + 1)
+}
+
+# A guard that reads the automaton: the rule fires only when q0 still has at
+# least one target, that is, when the automaton is not stuck.
+(q0, b) -> ($x, $n) when size(targets-from(q0)) => {
+  _ => (q0, b) -> (q2, 0)
+}

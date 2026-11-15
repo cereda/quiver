@@ -23,10 +23,11 @@ semantic choice is described here.
 7. [Recognition](#recognition)
 8. [Strategies](#strategies)
 9. [Adaptive primitives](#adaptive-primitives)
-10. [Errors](#errors)
-11. [The command-line interface](#the-command-line-interface)
-12. [The REPL](#the-repl)
-13. [Appendix: the grammar in one block](#appendix-the-grammar-in-one-block)
+10. [The inspection primitives](#the-inspection-primitives)
+11. [Errors](#errors)
+12. [The command-line interface](#the-command-line-interface)
+13. [The REPL](#the-repl)
+14. [Appendix: the grammar in one block](#appendix-the-grammar-in-one-block)
 
 ## A first program
 
@@ -64,7 +65,7 @@ value that it computed earlier, which is what
 Run it with:
 
 ```bash
-java -jar build/libs/quiver-1.0.2.jar -i src/main/resources/rec.quiver aabc
+java -jar build/libs/quiver-1.1.0.jar -i src/main/resources/rec.quiver aabc
 ```
 
 The companion document [the examples](examples.md) walks through every example
@@ -96,7 +97,9 @@ letters, digits, or one of `$ . _ /`. Identifiers are case-sensitive.
 | `$seq` | keyword: a sequence literal |
 | `$state` | keyword: the adaptive primitive that reads the current state |
 | `@fsm` | keyword: the automaton header |
-| `transitions-from`, `clone-automaton` | keywords: the adaptive primitives |
+| `transitions-from`, `targets-from`, `symbols-from`, `clone-automaton` | keywords: the adaptive primitives |
+| `is-empty`, `size` | keywords: the sequence primitives |
+| `each` | keyword: the sweep clause |
 
 The keywords `fn`, `when`, `true`, `false`, `emit` and `include` are reserved.
 
@@ -351,6 +354,7 @@ these rules:
 
 * a boolean is its own truth value;
 * an integer is true when it is not zero;
+* a sequence is true when it is not empty;
 * any other value is true.
 
 A rule without a guard always passes it.
@@ -403,6 +407,43 @@ When the automaton is about to take the `a`-transition out of `q0`:
 A clause whose left-hand side does not match is skipped. If the rule above fired
 while the automaton was taking the `b`-transition out of `q0`, the first clause
 would not apply, and the `b`-transition would survive untouched.
+
+### The sweep
+
+A clause may be a **sweep**, written `each <pattern> => { clauses }`. The sweep
+matches its pattern against every transition of the automaton, and runs the
+nested clauses once per matching transition:
+
+```quiver
+(q1, z) -> ($to, $n) => {
+  each (q0, $s) -> ($t, $v) => {
+    _ => (q0, $s) -> (q2, $v)
+  }
+}
+```
+
+The sweep differs from an ordinary clause in three ways:
+
+* the pattern is matched against the **transitions of the automaton**, not
+  against the subject of the rule; the subject plays no part in it;
+* the pattern is matched against each transition in the shape of the subject,
+  `((from, symbol), (to, value))`, so a pattern that matches every transition
+  leaving a state is written `(q0, $s) -> ($t, $v)`;
+* the nested clauses run **once per matching transition**, with the bindings of
+  the pattern extended by the bindings of that firing.
+
+The transitions that match are collected **before the first firing**, so the
+sweep sees the automaton as it was when it started; the actions of the firings,
+on the other hand, apply to the live automaton. A transition that an earlier
+firing removed is simply not there when a later firing looks for it, and a
+transition that a firing inserted is not swept by the same sweep.
+
+Each firing starts from the environment of the enclosing clause, extended with
+the bindings of the sweep's pattern: the bindings of one firing do not leak
+into the next. A sweep that matches no transition does nothing at all.
+
+The sweep is how a program performs a **bulk action**: one action, applied to
+many transitions at once.
 
 ## Recognition
 
@@ -508,6 +549,34 @@ Four constructs read the automaton from inside a rule.
 }
 ```
 
+## The inspection primitives
+
+Four constructs inspect a sequence, or the transitions of a state.
+
+| Primitive | Meaning |
+|---|---|
+| `targets-from(state)` | the **distinct targets** of the transitions leaving `state`, as a sequence of symbols |
+| `symbols-from(state)` | the **distinct symbols** of the transitions leaving `state`, as a sequence of symbols |
+| `size(expr)` | the number of elements of the sequence `expr`, as an integer |
+| `is-empty(expr)` | whether the sequence `expr` has no elements, as a boolean |
+
+The order of the elements is the order of the transitions in the automaton, and
+the repetitions are dropped: `targets-from` and `symbols-from` return each
+target and each symbol once.
+
+```quiver
+(q0, a) -> ($x, $n) => {
+  _ => emit(targets-from(q0))
+  _ => emit(size(symbols-from(q0)))
+  _ => (q0, a) -> ($x, $n + 1)
+}
+```
+
+`size` and `is-empty` apply to sequences only; used on a value of another
+type, they are an error. `is-empty` is the explicit emptiness test, while a
+sequence used directly as a guard follows the truthiness rule and is false
+when it is empty.
+
 ## Errors
 
 Every error is reported with the position of the offending construct:
@@ -523,6 +592,9 @@ The interpreter reports a Quiver error, never an unchecked exception, for:
 * a malformed FSM mapping (an entry that is not an arrow, or an arrow whose source
   or target is not a pair of symbols);
 * an arithmetic operation over a value that is not an integer;
+* an inspection primitive used on a value of the wrong type (`size` and
+  `is-empty` over anything but a sequence, and `targets-from` and
+  `symbols-from` over anything but a state symbol);
 * a binding in a value position;
 * a circular `include`;
 * an exhausted fuel budget.
@@ -564,7 +636,7 @@ The interactive read-eval-print loop loads a program and recognizes inputs again
 it:
 
 ```bash
-java -jar build/libs/quiver-1.0.2.jar
+java -jar build/libs/quiver-1.1.0.jar
 ```
 
 | Command | Meaning |
@@ -620,6 +692,7 @@ strategy       ::= 'strategy' symbol ('first' | 'all' | 'repeat') ['max' integer
 
 rule           ::= pattern ['when' term] '=>' '{' clause* '}'
 clause         ::= pattern '=>' (term | '_' | '{' clause* '}')
+                 | 'each' pattern '=>' '{' clause* '}'
 
 include        ::= 'include' string
 
@@ -640,6 +713,10 @@ term           ::= symbol
                  | 'emit' '(' term ')'
                  | '$state'
                  | 'transitions-from' '(' term ')'
+                 | 'targets-from' '(' term ')'
+                 | 'symbols-from' '(' term ')'
+                 | 'is-empty' '(' term ')'
+                 | 'size' '(' term ')'
                  | 'clone-automaton' '(' ')'
                  | integer
 

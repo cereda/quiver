@@ -3,6 +3,7 @@ package br.usp.poli.lta.cereda.quiver
 
 import java.io.File
 import java.io.IOException
+import java.math.BigInteger
 
 /**
  * The default fuel budget: the maximum number of steps a run may take before
@@ -90,6 +91,14 @@ fun matchTerm(expr: Expr, subject: Value, env: Env): Env? = when (expr) {
     is Expr.StateRef -> null
 
     is Expr.TransitionsFrom -> null
+
+    is Expr.TargetsFrom -> null
+
+    is Expr.SymbolsFrom -> null
+
+    is Expr.IsEmpty -> null
+
+    is Expr.Size -> null
 
     is Expr.CloneAutomaton -> null
 
@@ -221,9 +230,69 @@ fun evalExpr(expr: Expr, env: Env, currentState: String, automaton: Automaton): 
         )
     }
 
+    is Expr.TargetsFrom, is Expr.SymbolsFrom, is Expr.IsEmpty, is Expr.Size ->
+        evalInspection(expr, env, currentState, automaton)
+
     is Expr.CloneAutomaton -> {
         Value.Automaton(automaton.clone())
     }
+}
+
+/**
+ * Evaluates the inspection primitives, which read the transitions of a state
+ * or the elements of a sequence.
+ *
+ * @param expr the primitive to evaluate.
+ * @param env the variable bindings in scope.
+ * @param currentState the automaton's current state.
+ * @param automaton the automaton being rewritten.
+ * @return the value of the primitive.
+ * @throws QuiverException when the primitive is applied to a value of the
+ *   wrong type.
+ */
+private fun evalInspection(expr: Expr, env: Env, currentState: String, automaton: Automaton): Value = when (expr) {
+    is Expr.TargetsFrom -> {
+        val stateName = stateNameOf(expr.state, env, currentState, automaton, "targets-from")
+        val targets = automaton.transitions.filter { it.from == stateName }.map { it.to }.distinct()
+        Value.Seq(targets.map { Value.Symbol(it) })
+    }
+
+    is Expr.SymbolsFrom -> {
+        val stateName = stateNameOf(expr.state, env, currentState, automaton, "symbols-from")
+        val symbols = automaton.transitions.filter { it.from == stateName }.map { it.symbol }.distinct()
+        Value.Seq(symbols.map { Value.Symbol(it) })
+    }
+
+    is Expr.IsEmpty -> {
+        val value = evalExpr(expr.expr, env, currentState, automaton)
+        if (value !is Value.Seq) throw QuiverException(0, 0, "is-empty expects a sequence value")
+        Value.BoolVal(value.items.isEmpty())
+    }
+
+    is Expr.Size -> {
+        val value = evalExpr(expr.expr, env, currentState, automaton)
+        if (value !is Value.Seq) throw QuiverException(0, 0, "size expects a sequence value")
+        Value.IntVal(BigInteger.valueOf(value.items.size.toLong()))
+    }
+
+    else -> throw QuiverException(0, 0, "Not an inspection primitive")
+}
+
+/**
+ * Evaluates the state an inspection primitive reads.
+ *
+ * @param expr the expression denoting the state.
+ * @param env the variable bindings in scope.
+ * @param currentState the automaton's current state.
+ * @param automaton the automaton being rewritten.
+ * @param primitive the name of the primitive, for the error message.
+ * @return the name of the state.
+ * @throws QuiverException when the expression does not denote a state symbol.
+ */
+private fun stateNameOf(expr: Expr, env: Env, currentState: String, automaton: Automaton, primitive: String): String {
+    val value = evalExpr(expr, env, currentState, automaton)
+    if (value !is Value.Symbol) throw QuiverException(0, 0, "$primitive expects a state symbol")
+    return value.name
 }
 
 /** Applies a [Value.Func] to one argument: binds the parameter and evaluates the body. */
@@ -431,7 +500,8 @@ private fun reresolveTo(automaton: Automaton, state: String, symbol: String, fal
  * Evaluates an optional guard expression with the given environment.
  * Returns true if there is no guard. Otherwise, evaluates the guard and
  * returns its truthiness: [Value.BoolVal] follows its boolean, [Value.IntVal]
- * is false only when zero, and all other values are truthy.
+ * is false only when zero, [Value.Seq] is false only when empty, and all other
+ * values are truthy.
  *
  * @param guard the guard expression, or null for "always passes".
  * @param env the bindings from the rule's pattern match.
@@ -444,6 +514,7 @@ private fun guardPasses(guard: Expr?, env: Env, currentState: String, automaton:
     return when (result) {
         is Value.BoolVal -> result.b
         is Value.IntVal -> result.n.signum() != 0
+        is Value.Seq -> result.items.isNotEmpty()
         else -> true
     }
 }
@@ -481,6 +552,10 @@ private fun applyClauses(
  * environment is left untouched: this is the discipline of term rewriting,
  * where a rule body is a sequence of guarded equations.
  *
+ * A sweep is the exception: its left pattern is matched against the
+ * transitions of the automaton, not against the subject of the rule, and its
+ * body runs once per matching transition.
+ *
  * @return the environment refined by the clause's left pattern.
  */
 private fun applyClause(
@@ -491,32 +566,118 @@ private fun applyClause(
     currentState: String,
     trace: Boolean,
 ): Env {
-    // Refine the environment by matching the clause's left pattern; a clause
-    // that does not match the subject does not apply.
-    val currentEnv = matchTerm(clause.left, subject, env) ?: return env
-    when (val cr = clause.right) {
-        is ClauseRight.Wildcard ->
-            // left => _ : remove the transition described by the left side.
-            removeTransition(
-                transitionKey(evalExpr(clause.left, currentEnv, currentState, automaton)),
-                automaton,
-                trace,
-            )
+    val cr = clause.right
+    val result =
+        if (cr is ClauseRight.Sweep) {
+            // The sweep's pattern is matched against the transitions of the
+            // automaton, so the subject of the rule plays no part in it.
+            applySweep(clause.left, cr.clauses, env, automaton, currentState, trace)
+            env
+        } else {
+            // Refine the environment by matching the clause's left pattern; a
+            // clause that does not match the subject does not apply.
+            val currentEnv = matchTerm(clause.left, subject, env)
+            if (currentEnv == null) {
+                env
+            } else {
+                when (cr) {
+                    is ClauseRight.Wildcard ->
+                        // left => _ : remove the transition described by the left side.
+                        removeTransition(
+                            transitionKey(evalExpr(clause.left, currentEnv, currentState, automaton)),
+                            automaton,
+                            trace,
+                        )
 
-        is ClauseRight.Rhs ->
-            // => expr or left => expr : insert/update a transition.
-            insertTransition(
-                transition(evalExpr(cr.expr, currentEnv, currentState, automaton)),
-                automaton,
-                trace,
-            )
+                    is ClauseRight.Rhs ->
+                        // => expr or left => expr : insert/update a transition.
+                        insertTransition(
+                            transition(evalExpr(cr.expr, currentEnv, currentState, automaton)),
+                            automaton,
+                            trace,
+                        )
 
-        is ClauseRight.Block ->
-            // Nested block: execute its clauses with the current environment.
-            applyClauses(cr.clauses, subject, currentEnv, automaton, currentState, trace)
-    }
-    return currentEnv
+                    is ClauseRight.Block ->
+                        // Nested block: execute its clauses with the current environment.
+                        applyClauses(cr.clauses, subject, currentEnv, automaton, currentState, trace)
+                }
+                currentEnv
+            }
+        }
+    return result
 }
+
+/**
+ * Runs a sweep: matches its pattern against every transition of the automaton
+ * and runs the nested clauses once per matching transition.
+ *
+ * The transitions that match are collected before the first firing, so the
+ * sweep sees the automaton as it was when it started; the actions of the
+ * firings, on the other hand, apply to the live automaton. A transition that
+ * an earlier firing removed is simply not there when a later firing looks for
+ * it.
+ *
+ * Each firing starts from the environment of the enclosing clause, extended
+ * with the bindings of the sweep's pattern: the bindings of one firing do not
+ * leak into the next.
+ *
+ * @param pattern the pattern the sweep matches against the transitions.
+ * @param clauses the clauses the sweep runs once per matching transition.
+ * @param env the bindings in scope where the sweep appears.
+ * @param automaton the automaton the sweep reads and mutates.
+ * @param currentState the automaton's current state, for `$state`.
+ * @param trace when true, prints each firing to stderr.
+ */
+private fun applySweep(
+    pattern: Expr,
+    clauses: List<Clause>,
+    env: Env,
+    automaton: Automaton,
+    currentState: String,
+    trace: Boolean,
+) {
+    val firings =
+        automaton.transitions.mapNotNull { transition ->
+            val term = transitionSubject(transition)
+            matchTerm(pattern, term, env)?.let { firingEnv -> firingEnv to term }
+        }
+    for ((firingEnv, term) in firings) {
+        if (trace) {
+            System.err.println("trace   sweep: ${exprToString(pattern)} on ${subjectToString(term)}")
+        }
+        applyClauses(clauses, term, firingEnv, automaton, currentState, trace)
+    }
+}
+
+/**
+ * The subject term of a transition: `((from, symbol), (to, value))`, the shape
+ * a rule pattern and a sweep pattern are matched against.
+ *
+ * @param transition the transition to denote.
+ * @return the term that denotes the transition.
+ */
+private fun transitionSubject(transition: Automaton.Transition): Value = Value.Pair(
+    Value.Pair(Value.Symbol(transition.from), Value.Symbol(transition.symbol)),
+    Value.Pair(Value.Symbol(transition.to), transition.value),
+)
+
+/**
+ * Renders a subject term as a transition, for the trace.
+ *
+ * @param subject the subject term to render.
+ * @return the rendering of the term.
+ */
+private fun subjectToString(subject: Value): String =
+    if (subject is Value.Pair && subject.left is Value.Pair && subject.right is Value.Pair) {
+        val key = subject.left
+        val target = subject.right
+        val symbol = if (key.right is Value.Symbol) key.right.name else "?"
+        val from = if (key.left is Value.Symbol) key.left.name else "?"
+        val to = if (target.left is Value.Symbol) target.left.name else "?"
+        "($from,$symbol)->($to,${valueToString(target.right)})"
+    } else {
+        valueToString(subject)
+    }
 
 /** Removes every transition with the given (from, symbol) key, when present. */
 private fun removeTransition(key: Pair<String, String>?, automaton: Automaton, trace: Boolean) {
@@ -621,6 +782,14 @@ private fun patternType(expr: Expr): Value.Type? = when (expr) {
 
     is Expr.Emit -> null
 
+    is Expr.TargetsFrom -> null
+
+    is Expr.SymbolsFrom -> null
+
+    is Expr.IsEmpty -> null
+
+    is Expr.Size -> null
+
     else -> null
 }
 
@@ -687,6 +856,10 @@ internal fun patternHeadKey(pattern: Expr): String = when (pattern) {
     is Expr.Fun -> HeadKeys.FUNC
     is Expr.App -> HeadKeys.FUNC
     is Expr.Emit -> HeadKeys.ANY
+    is Expr.TargetsFrom -> HeadKeys.ANY
+    is Expr.SymbolsFrom -> HeadKeys.ANY
+    is Expr.IsEmpty -> HeadKeys.ANY
+    is Expr.Size -> HeadKeys.ANY
     else -> HeadKeys.ANY
 }
 
@@ -760,6 +933,14 @@ internal fun exprToString(expr: Expr): String = when (expr) {
     is Expr.App -> "${exprToString(expr.fn)}(${exprToString(expr.arg)})"
 
     is Expr.Emit -> "emit(${exprToString(expr.expr)})"
+
+    is Expr.TargetsFrom -> "targets-from(${exprToString(expr.state)})"
+
+    is Expr.SymbolsFrom -> "symbols-from(${exprToString(expr.state)})"
+
+    is Expr.IsEmpty -> "is-empty(${exprToString(expr.expr)})"
+
+    is Expr.Size -> "size(${exprToString(expr.expr)})"
 
     else -> expr.toString()
 }
