@@ -8,6 +8,13 @@ import java.io.InputStreamReader
 private const val STRATEGY_SPEC_PARTS = 3
 
 /**
+ * The message reported when the reserved word `epsilon` appears in an input
+ * line of the REPL.
+ */
+private const val RESERVED_EPSILON =
+    "epsilon is reserved: it denotes the internal transition; write \"epsilon\" for the symbol"
+
+/**
  * Interactive REPL for the Quiver term-rewriting language.
  *
  * Usage:
@@ -48,6 +55,9 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
 
     /** The automaton built from the most recently loaded FSM header. */
     private var automaton: Automaton? = null
+
+    /** The input the most recently loaded program declares, if it declares one. */
+    private var programInput: List<String>? = null
 
     /** Rule index keyed by pattern head key, for faster rule lookup. */
     private var ruleIndex: Map<String, List<Rule>>? = null
@@ -128,6 +138,8 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
 
             trimmed.startsWith(":step ") -> stepInput(trimmed.removePrefix(":step ").trim())
 
+            trimmed == ":recognize" -> recognizeInput(null)
+
             trimmed.startsWith(":recognize ") -> recognizeInput(trimmed.removePrefix(":recognize ").trim())
 
             trimmed.startsWith(":debug ") -> startDebug(trimmed.removePrefix(":debug ").trim())
@@ -170,13 +182,16 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
         println("  :nondet on|off     enable/disable non-deterministic recognition")
         println("  :step <input>      recognize input and print trace to stderr")
         println("  :recognize <input> recognize input (print true/false)")
+        println("  :recognize         recognize the input of the loaded program")
         println("  :debug <input>     enter interactive step-by-step debug mode for input")
         println("  :reset             clear all rules and the automaton")
         println("  :quit              exit the REPL")
         println("  :help              show this help")
         println()
         println("Any other line (outside debug mode) is treated as input to recognize")
-        println("against the loaded automaton.")
+        println("against the loaded automaton. An input is a list of symbols: a bare")
+        println("token is one symbol, a quoted string is one symbol, and commas separate")
+        println("them.")
     }
 
     /** Prints the debug-mode command help. */
@@ -280,11 +295,20 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
             activeStrategy = selected
             ruleIndex = newRuleIndex
             automaton = newAutomaton
+            programInput = fsm?.input
 
             println("Loaded $path: ${rules.size} rule(s), ${strategies.size} strategy(ies)")
             if (fsm != null) {
                 println("  FSM: start=${fsm.start}, accepting=${fsm.accepting.joinToString(",")}")
                 println("  mapping: ${fsm.mapping.size} transition(s)")
+                val input = fsm.input
+                println(
+                    if (input == null) {
+                        "  input: (none declared; give one on the command line)"
+                    } else {
+                        "  input: ${input.size} symbol(s): ${input.joinToString(", ")}"
+                    },
+                )
             } else {
                 println("  (no FSM header; recognition requires :load a file with @fsm)")
             }
@@ -323,8 +347,13 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
         println("strategy set to ${kind.name} (maxIterations=$maxIter)")
     }
 
-    /** Recognizes an input against the loaded automaton, printing true/false. */
-    private fun recognizeInput(input: String) {
+    /**
+     * Recognizes an input against the loaded automaton, printing true/false.
+     *
+     * @param input the input line, or null to use the input of the loaded
+     *   program.
+     */
+    private fun recognizeInput(input: String?) {
         recognizeWith(input, trace)
     }
 
@@ -337,26 +366,57 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
      * Recognizes an input against the loaded automaton, with the given trace
      * setting, and prints the result.
      *
-     * @param input the input to recognize.
+     * @param input the input line, or null to use the input of the loaded
+     *   program.
      * @param withTrace whether the step trace is printed.
      */
-    private fun recognizeWith(input: String, withTrace: Boolean) {
+    private fun recognizeWith(input: String?, withTrace: Boolean) {
         val automaton = automaton
         val strategy = activeStrategy
         if (automaton == null || strategy == null) {
             println("no automaton/strategy loaded; use :load <file.quiver> first")
             return
         }
+        val symbols = resolveInput(input) ?: return
         val result =
             if (nondet) {
-                recognizeNondet(input, automaton, strategy, withTrace, ruleIndex = ruleIndex)
+                recognizeNondet(symbols, automaton, strategy, withTrace, ruleIndex = ruleIndex)
             } else {
-                recognize(input, automaton, strategy, withTrace, ruleIndex = ruleIndex)
+                recognize(symbols, automaton, strategy, withTrace, ruleIndex = ruleIndex)
             }
         println(if (result) "true" else "false")
     }
 
-    /** Enters interactive debug mode for the given input (`:debug <input>`). */
+    /**
+     * Resolves the symbols of the input of a recognition.
+     *
+     * The line given to the command is tokenized by the lexer of the
+     * language, and the program loaded supplies the input when the command
+     * names none.
+     *
+     * @param input the input line, or null to use the input of the loaded
+     *   program.
+     * @return the symbols of the input, or null when there is no input.
+     */
+    private fun resolveInput(input: String?): List<String>? {
+        val symbols =
+            try {
+                input?.let { tokenizeInput(it) } ?: programInput
+            } catch (e: QuiverException) {
+                println("error: ${e.message}")
+                return null
+            }
+        if (symbols == null) {
+            println("the program declares no input; give one on the command line")
+        }
+        return symbols
+    }
+
+    /**
+     * Enters interactive debug mode for the given input (`:debug <input>`).
+     *
+     * @param input the input line to step through.
+     */
     private fun startDebug(input: String) {
         val automaton = automaton
         val strategy = activeStrategy
@@ -364,13 +424,20 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
             println("no automaton/strategy loaded; use :load <file.quiver> first")
             return
         }
+        val symbols =
+            try {
+                tokenizeInput(input)
+            } catch (e: QuiverException) {
+                println("error: ${e.message}")
+                return
+            }
         // The debug mode steps a single path, so it always runs the
         // deterministic recognizer.
         val recognizer = Recognizer(automaton, strategy, trace, ruleIndex = ruleIndex)
-        recognizer.input = input
+        recognizer.input = symbols
         debugRecognizer = recognizer
         debugMode = true
-        println("debug mode started for input '$input' (length ${input.length})")
+        println("debug mode started for ${symbols.size} symbol(s)")
         println("state=${recognizer.state} position=${recognizer.position}")
     }
 
@@ -396,8 +463,8 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
     /** Handles `:inspect` in debug mode: prints recognizer and automaton state. */
     private fun debugInspect() {
         val rec = debugRecognizer ?: return
-        println("input: '${rec.input}'")
-        println("position: ${rec.position} / ${rec.input.length}")
+        println("input: ${rec.input.joinToString(", ")}")
+        println("position: ${rec.position} / ${rec.input.size}")
         println("state: ${rec.state}")
         println("finished: ${rec.finished}")
         println("result: ${rec.result}")
@@ -405,7 +472,7 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
         println("accepting: ${rec.automaton.accepting.sorted().joinToString(",")}")
         println("transitions (${rec.automaton.transitions.size}):")
         rec.automaton.transitions.forEach { t ->
-            println("  (${t.from}, ${t.symbol}) -> (${t.to}, ${valueToString(t.value)})")
+            println("  (${t.from}, ${t.label.render()}) -> (${t.to}, ${valueToString(t.value)})")
         }
     }
 
@@ -424,6 +491,7 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
         strategies = emptyMap()
         activeStrategy = null
         automaton = null
+        programInput = null
         ruleIndex = null
         trace = false
         nondet = false
@@ -431,6 +499,34 @@ class QuiverRepl(private val reader: BufferedReader = BufferedReader(InputStream
         debugRecognizer = null
         println("reset")
     }
+}
+
+/**
+ * Tokenizes an input line into the names of the input symbols.
+ *
+ * The line is read with the lexer of the language: a bare token is one
+ * symbol, and its name is the text of the token; a quoted string is one
+ * symbol, and its name is the text of the string; the commas separate the
+ * symbols, and they may be left out.
+ *
+ * @param line the input line.
+ * @return the names of the input symbols, in order.
+ * @throws QuiverException when the line holds a token that is not a symbol.
+ */
+internal fun tokenizeInput(line: String): List<String> {
+    val symbols = mutableListOf<String>()
+    for (token in lex(line)) {
+        when (token) {
+            is Token.Ident -> symbols += token.name
+            is Token.StringLit -> symbols += token.text
+            is Token.IntLit -> symbols += token.n.toString()
+            is Token.Comma -> Unit
+            is Token.Comment -> Unit
+            is Token.Epsilon -> throw QuiverException(token.line, token.column, RESERVED_EPSILON)
+            else -> throw QuiverException(token.line, token.column, "Unexpected token in the input: $token")
+        }
+    }
+    return symbols
 }
 
 /**

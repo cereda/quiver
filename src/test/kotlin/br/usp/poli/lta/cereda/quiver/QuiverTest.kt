@@ -17,67 +17,67 @@ class QuiverTest {
 
     @Test
     fun `simple recognizer accepts ab`() {
-        assertEquals(true, runQuiver(load("simple.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("simple.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `simple recognizer rejects a`() {
-        assertEquals(false, runQuiver(load("simple.quiver"), "a"))
+        assertEquals(false, runQuiver(load("simple.quiver"), listOf("a")))
     }
 
     @Test
     fun `simple recognizer rejects abc`() {
-        assertEquals(false, runQuiver(load("simple.quiver"), "abc"))
+        assertEquals(false, runQuiver(load("simple.quiver"), listOf("a", "b", "c")))
     }
 
     @Test
     fun `simple recognizer rejects b`() {
-        assertEquals(false, runQuiver(load("simple.quiver"), "b"))
+        assertEquals(false, runQuiver(load("simple.quiver"), listOf("b")))
     }
 
     @Test
     fun `rec recognizer accepts aabbcc`() {
-        assertEquals(true, runQuiver(load("rec.quiver"), "aabbcc"))
+        assertEquals(true, runQuiver(load("rec.quiver"), listOf("a", "a", "b", "b", "c", "c")))
     }
 
     @Test
     fun `rec recognizer accepts abc`() {
-        assertEquals(true, runQuiver(load("rec.quiver"), "abc"))
+        assertEquals(true, runQuiver(load("rec.quiver"), listOf("a", "b", "c")))
     }
 
     @Test
     fun `rec recognizer accepts aaabbbccc`() {
-        assertEquals(true, runQuiver(load("rec.quiver"), "aaabbbccc"))
+        assertEquals(true, runQuiver(load("rec.quiver"), listOf("a", "a", "a", "b", "b", "b", "c", "c", "c")))
     }
 
     @Test
     fun `rec recognizer accepts aabbc`() {
-        assertEquals(true, runQuiver(load("rec.quiver"), "aabbc"))
+        assertEquals(true, runQuiver(load("rec.quiver"), listOf("a", "a", "b", "b", "c")))
     }
 
     @Test
     fun `rec recognizer rejects a`() {
-        assertEquals(false, runQuiver(load("rec.quiver"), "a"))
+        assertEquals(false, runQuiver(load("rec.quiver"), listOf("a")))
     }
 
     @Test
     fun `rec recognizer rejects empty`() {
-        assertEquals(false, runQuiver(load("rec.quiver"), ""))
+        assertEquals(false, runQuiver(load("rec.quiver"), emptyList()))
     }
 
     @Test
     fun `rec recognizer rejects aabb`() {
-        assertEquals(false, runQuiver(load("rec.quiver"), "aabb"))
+        assertEquals(false, runQuiver(load("rec.quiver"), listOf("a", "a", "b", "b")))
     }
 
     @Test
     fun `rec recognizer rejects ac`() {
-        assertEquals(false, runQuiver(load("rec.quiver"), "ac"))
+        assertEquals(false, runQuiver(load("rec.quiver"), listOf("a", "c")))
     }
 
     @Test
     fun `rec recognizer rejects aabbccd`() {
-        assertEquals(false, runQuiver(load("rec.quiver"), "aabbccd"))
+        assertEquals(false, runQuiver(load("rec.quiver"), listOf("a", "a", "b", "b", "c", "c", "d")))
     }
 
     @Test
@@ -108,58 +108,64 @@ class QuiverTest {
     @Test
     fun `type-compatible rule applies to matching subject`() {
         // Pattern (q0, a) is PAIR; subject is a PAIR transition → applies.
-        assertEquals(true, runQuiver(load("simple.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("simple.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `closure recognizer accepts abc`() {
-        assertEquals(true, runQuiver(load("closure.quiver"), "abc"))
+        assertEquals(true, runQuiver(load("closure.quiver"), listOf("a", "b", "c")))
     }
 
     @Test
     fun `closure recognizer rejects ab`() {
-        assertEquals(false, runQuiver(load("closure.quiver"), "ab"))
+        assertEquals(false, runQuiver(load("closure.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `closure recognizer rejects a`() {
-        assertEquals(false, runQuiver(load("closure.quiver"), "a"))
+        assertEquals(false, runQuiver(load("closure.quiver"), listOf("a")))
     }
 
     @Test
     fun `closure recognizer rejects abcd`() {
-        assertEquals(false, runQuiver(load("closure.quiver"), "abcd"))
+        assertEquals(false, runQuiver(load("closure.quiver"), listOf("a", "b", "c", "d")))
     }
 
     @Test
     fun `strategy recognizer accepts a`() {
-        assertEquals(true, runQuiver(load("strategy.quiver"), "a"))
+        assertEquals(true, runQuiver(load("strategy.quiver"), listOf("a")))
     }
 
     @Test
     fun `strategy recognizer rejects empty`() {
-        assertEquals(false, runQuiver(load("strategy.quiver"), ""))
+        assertEquals(false, runQuiver(load("strategy.quiver"), emptyList()))
     }
 
     @Test
     fun `strategy recognizer rejects b`() {
-        assertEquals(false, runQuiver(load("strategy.quiver"), "b"))
+        assertEquals(false, runQuiver(load("strategy.quiver"), listOf("b")))
     }
 
     @Test
     fun `trace does not change recognition result`() {
-        assertEquals(runQuiver(load("simple.quiver"), "ab"), runQuiver(load("simple.quiver"), "ab", trace = true))
-        assertEquals(runQuiver(load("rec.quiver"), "aabbcc"), runQuiver(load("rec.quiver"), "aabbcc", trace = true))
+        assertEquals(
+            runQuiver(load("simple.quiver"), listOf("a", "b")),
+            runQuiver(load("simple.quiver"), listOf("a", "b"), trace = true),
+        )
+        assertEquals(
+            runQuiver(load("rec.quiver"), listOf("a", "a", "b", "b", "c", "c")),
+            runQuiver(load("rec.quiver"), listOf("a", "a", "b", "b", "c", "c"), trace = true),
+        )
     }
 
     @Test
     fun `trace accepts ab`() {
-        assertEquals(true, runQuiver(load("simple.quiver"), "ab", trace = true))
+        assertEquals(true, runQuiver(load("simple.quiver"), listOf("a", "b"), trace = true))
     }
 
     @Test
     fun `trace rejects a`() {
-        assertEquals(false, runQuiver(load("simple.quiver"), "a", trace = true))
+        assertEquals(false, runQuiver(load("simple.quiver"), listOf("a"), trace = true))
     }
 
     @Test
@@ -210,52 +216,52 @@ class QuiverTest {
 
     @Test
     fun `abn recognizer accepts ab`() {
-        assertEquals(true, runQuiver(load("abn.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("abn.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `abn recognizer accepts aabb`() {
-        assertEquals(true, runQuiver(load("abn.quiver"), "aabb"))
+        assertEquals(true, runQuiver(load("abn.quiver"), listOf("a", "a", "b", "b")))
     }
 
     @Test
     fun `abn recognizer accepts aaabbb`() {
-        assertEquals(true, runQuiver(load("abn.quiver"), "aaabbb"))
+        assertEquals(true, runQuiver(load("abn.quiver"), listOf("a", "a", "a", "b", "b", "b")))
     }
 
     @Test
     fun `abn recognizer rejects empty`() {
-        assertEquals(false, runQuiver(load("abn.quiver"), ""))
+        assertEquals(false, runQuiver(load("abn.quiver"), emptyList()))
     }
 
     @Test
     fun `abn recognizer rejects a`() {
-        assertEquals(false, runQuiver(load("abn.quiver"), "a"))
+        assertEquals(false, runQuiver(load("abn.quiver"), listOf("a")))
     }
 
     @Test
     fun `abn recognizer rejects b`() {
-        assertEquals(false, runQuiver(load("abn.quiver"), "b"))
+        assertEquals(false, runQuiver(load("abn.quiver"), listOf("b")))
     }
 
     @Test
     fun `abn recognizer rejects aab`() {
-        assertEquals(false, runQuiver(load("abn.quiver"), "aab"))
+        assertEquals(false, runQuiver(load("abn.quiver"), listOf("a", "a", "b")))
     }
 
     @Test
     fun `abn recognizer rejects abb`() {
-        assertEquals(false, runQuiver(load("abn.quiver"), "abb"))
+        assertEquals(false, runQuiver(load("abn.quiver"), listOf("a", "b", "b")))
     }
 
     @Test
     fun `abn recognizer rejects aaabbbb`() {
-        assertEquals(false, runQuiver(load("abn.quiver"), "aaabbbb"))
+        assertEquals(false, runQuiver(load("abn.quiver"), listOf("a", "a", "a", "b", "b", "b", "b")))
     }
 
     @Test
     fun `abn recognizer rejects aabbcc`() {
-        assertEquals(false, runQuiver(load("abn.quiver"), "aabbcc"))
+        assertEquals(false, runQuiver(load("abn.quiver"), listOf("a", "a", "b", "b", "c", "c")))
     }
 
     @Test
@@ -274,47 +280,47 @@ class QuiverTest {
 
     @Test
     fun `guard recognizer accepts ab`() {
-        assertEquals(true, runQuiver(load("guard.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("guard.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `guard recognizer accepts aab`() {
-        assertEquals(true, runQuiver(load("guard.quiver"), "aab"))
+        assertEquals(true, runQuiver(load("guard.quiver"), listOf("a", "a", "b")))
     }
 
     @Test
     fun `guard recognizer rejects b`() {
-        assertEquals(false, runQuiver(load("guard.quiver"), "b"))
+        assertEquals(false, runQuiver(load("guard.quiver"), listOf("b")))
     }
 
     @Test
     fun `guard recognizer rejects empty`() {
-        assertEquals(false, runQuiver(load("guard.quiver"), ""))
+        assertEquals(false, runQuiver(load("guard.quiver"), emptyList()))
     }
 
     @Test
     fun `guard recognizer accepts aaab`() {
-        assertEquals(true, runQuiver(load("guard.quiver"), "aaab"))
+        assertEquals(true, runQuiver(load("guard.quiver"), listOf("a", "a", "a", "b")))
     }
 
     @Test
     fun `guard literal recognizer accepts a`() {
-        assertEquals(true, runQuiver(load("guard-literal.quiver"), "a"))
+        assertEquals(true, runQuiver(load("guard-literal.quiver"), listOf("a")))
     }
 
     @Test
     fun `guard literal recognizer rejects empty`() {
-        assertEquals(false, runQuiver(load("guard-literal.quiver"), ""))
+        assertEquals(false, runQuiver(load("guard-literal.quiver"), emptyList()))
     }
 
     @Test
     fun `emit recognizer accepts ab`() {
-        assertEquals(true, runQuiver(load("emit.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("emit.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `emit recognizer accepts aab`() {
-        assertEquals(true, runQuiver(load("emit.quiver"), "aab"))
+        assertEquals(true, runQuiver(load("emit.quiver"), listOf("a", "a", "b")))
     }
 
     @Test
@@ -327,7 +333,7 @@ class QuiverTest {
 
     @Test
     fun `emit prints counter to stdout`() {
-        val output = captureStdout { runQuiver(load("emit.quiver"), "aab") }
+        val output = captureStdout { runQuiver(load("emit.quiver"), listOf("a", "a", "b")) }
         assertTrue(output.contains("1"))
         assertTrue(output.contains("2"))
     }
@@ -356,7 +362,7 @@ class QuiverTest {
         }
 
         val rec = Recognizer(automaton, strategy)
-        rec.input = "ab"
+        rec.input = listOf("a", "b")
 
         // Step 1: 'a'
         val r1 = rec.step()
@@ -400,7 +406,7 @@ class QuiverTest {
         }
 
         val rec = Recognizer(automaton, Strategy("test", StrategyKind.FIRST, 100, emptyList()))
-        rec.input = "abc"
+        rec.input = listOf("a", "b", "c")
 
         // Step 1: 'a' -> q1
         val r1 = rec.step()!!
@@ -437,14 +443,14 @@ class QuiverTest {
         }
 
         val rec = Recognizer(automaton, Strategy("test", StrategyKind.FIRST, 100, emptyList()))
-        rec.input = "ab"
+        rec.input = listOf("a", "b")
         assertTrue(rec.runToCompletion())
     }
 
     @Test
     fun `error reporting unknown FSM key`() {
         val ex = assertFailsWith<QuiverException> {
-            runQuiver(load("error-bad-key.quiver"), "x")
+            runQuiver(load("error-bad-key.quiver"), listOf("x"))
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("line 4:col 12"), "Expected line 4:col 12, got: $msg")
@@ -454,7 +460,7 @@ class QuiverTest {
     @Test
     fun `error reporting unexpected character`() {
         val ex = assertFailsWith<QuiverException> {
-            runQuiver(load("error-unexpected-char.quiver"), "x")
+            runQuiver(load("error-unexpected-char.quiver"), listOf("x"))
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("line 4:col 3"), "Expected line 4:col 3, got: $msg")
@@ -463,14 +469,14 @@ class QuiverTest {
 
     @Test
     fun `fuel counter allows normal execution`() {
-        assertEquals(true, runQuiver(load("simple.quiver"), "ab", maxSteps = 1000))
-        assertEquals(false, runQuiver(load("simple.quiver"), "a", maxSteps = 1000))
+        assertEquals(true, runQuiver(load("simple.quiver"), listOf("a", "b"), maxSteps = 1000))
+        assertEquals(false, runQuiver(load("simple.quiver"), listOf("a"), maxSteps = 1000))
     }
 
     @Test
     fun `fuel counter exhausts with low budget`() {
         val ex = assertFailsWith<FuelExhaustedException> {
-            runQuiver(load("simple.quiver"), "ab", maxSteps = 1)
+            runQuiver(load("simple.quiver"), listOf("a", "b"), maxSteps = 1)
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("Step budget exhausted"), "Expected 'Step budget exhausted', got: $msg")
@@ -478,15 +484,15 @@ class QuiverTest {
 
     @Test
     fun `include loads rules from another file`() {
-        assertEquals(true, runQuiver(load("include-main.quiver"), "ab", baseDir = "src/test/resources"))
-        assertEquals(true, runQuiver(load("include-main.quiver"), "b", baseDir = "src/test/resources"))
-        assertEquals(false, runQuiver(load("include-main.quiver"), "a", baseDir = "src/test/resources"))
+        assertEquals(true, runQuiver(load("include-main.quiver"), listOf("a", "b"), baseDir = "src/test/resources"))
+        assertEquals(true, runQuiver(load("include-main.quiver"), listOf("b"), baseDir = "src/test/resources"))
+        assertEquals(false, runQuiver(load("include-main.quiver"), listOf("a"), baseDir = "src/test/resources"))
     }
 
     @Test
     fun `include detects circular include`() {
         val ex = assertFailsWith<QuiverException> {
-            runQuiver(load("include-circular.quiver"), "x", baseDir = "src/test/resources")
+            runQuiver(load("include-circular.quiver"), listOf("x"), baseDir = "src/test/resources")
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("Circular include"), "Expected 'Circular include', got: $msg")
@@ -511,20 +517,22 @@ class QuiverTest {
 
     @Test
     fun `primitive state emits current state`() {
-        val output = captureStdout { runQuiver(load("primitives.quiver"), "a", baseDir = "src/test/resources") }
+        val output = captureStdout { runQuiver(load("primitives.quiver"), listOf("a"), baseDir = "src/test/resources") }
         assertTrue(output.contains("q0"), "Expected output to contain 'q0', got: $output")
     }
 
     @Test
     fun `primitive transitions-from emits transitions`() {
-        val output = captureStdout { runQuiver(load("primitives.quiver"), "ab", baseDir = "src/test/resources") }
+        val output =
+            captureStdout { runQuiver(load("primitives.quiver"), listOf("a", "b"), baseDir = "src/test/resources") }
         assertTrue(output.contains("q1"), "Expected output to contain 'q1', got: $output")
         assertTrue(output.contains("q0"), "Expected output to contain 'q0', got: $output")
     }
 
     @Test
     fun `primitive clone-automaton emits clone`() {
-        val output = captureStdout { runQuiver(load("primitives.quiver"), "abc", baseDir = "src/test/resources") }
+        val source = load("primitives.quiver")
+        val output = captureStdout { runQuiver(source, listOf("a", "b", "c"), baseDir = "src/test/resources") }
         assertTrue(output.contains("automaton"), "Expected output to contain 'automaton', got: $output")
     }
 
@@ -645,26 +653,28 @@ class QuiverTest {
     @Test
     fun `property deterministic recognition`() {
         val testInputs = listOf("ab", "aabb", "aaabbb", "aabbcc", "abc", "a", "b", "")
-        for (input in testInputs) {
+        for (text in testInputs) {
+            val input = text.map { it.toString() }
             val result1 = runQuiver(load("rec.quiver"), input)
             val result2 = runQuiver(load("rec.quiver"), input)
-            assertEquals(result1, result2, "Determinism violated for input '$input'")
+            assertEquals(result1, result2, "Determinism violated for input '$text'")
         }
     }
 
     @Test
     fun `property trace invariance`() {
         val testInputs = listOf("ab", "aabb", "aaabbb", "aabbcc", "abc", "a", "b", "")
-        for (input in testInputs) {
+        for (text in testInputs) {
+            val input = text.map { it.toString() }
             val resultNoTrace = runQuiver(load("rec.quiver"), input, trace = false)
             val resultWithTrace = runQuiver(load("rec.quiver"), input, trace = true)
-            assertEquals(resultNoTrace, resultWithTrace, "Trace changed result for input '$input'")
+            assertEquals(resultNoTrace, resultWithTrace, "Trace changed result for input '$text'")
         }
     }
 
     @Test
     fun `property fuel invariance for terminating programs`() {
-        val input = "aabbcc"
+        val input = listOf("a", "a", "b", "b", "c", "c")
         val resultDefault = runQuiver(load("rec.quiver"), input, maxSteps = 10_000)
         val resultHighFuel = runQuiver(load("rec.quiver"), input, maxSteps = 100_000)
         val resultLowFuel = runQuiver(load("rec.quiver"), input, maxSteps = 500)
@@ -678,7 +688,7 @@ class QuiverTest {
         val symbols = listOf('a', 'b', 'c')
         repeat(50) {
             val len = rng.nextInt(9)
-            val input = List(len) { symbols[rng.nextInt(symbols.size)] }.joinToString("")
+            val input = List(len) { symbols[rng.nextInt(symbols.size)].toString() }
             val result1 = runQuiver(load("rec.quiver"), input)
             val result2 = runQuiver(load("rec.quiver"), input)
             assertEquals(result1, result2, "Determinism violated for random input '$input'")
@@ -689,7 +699,8 @@ class QuiverTest {
     fun `property ruleIndex produces same results as no index`() {
         val rng = Random(999)
         val testInputs = listOf("ab", "aabb", "aaabbb", "aabbcc", "abc", "a", "b", "")
-        for (input in testInputs) {
+        for (text in testInputs) {
+            val input = text.map { it.toString() }
             val decls = parseSource(load("rec.quiver"))
             val resolvedDecls = resolveIncludes(decls, ".", mutableSetOf())
             val fsm = resolvedDecls.filterIsInstance<Decl.Fsm>().firstOrNull()
@@ -716,7 +727,7 @@ class QuiverTest {
 
             val resultNoIndex = recognize(input, automaton, activeStrategy, maxSteps = 10_000, ruleIndex = null)
             val resultWithIndex = recognize(input, automaton, activeStrategy, maxSteps = 10_000, ruleIndex = ruleIndex)
-            assertEquals(resultNoIndex, resultWithIndex, "Rule index changed result for input '$input'")
+            assertEquals(resultNoIndex, resultWithIndex, "Rule index changed result for input '$text'")
         }
     }
 
@@ -727,142 +738,142 @@ class QuiverTest {
 
     @Test
     fun `seq example accepts ab`() {
-        assertEquals(true, runQuiver(load("seq.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("seq.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `seq example rejects a`() {
-        assertEquals(false, runQuiver(load("seq.quiver"), "a"))
+        assertEquals(false, runQuiver(load("seq.quiver"), listOf("a")))
     }
 
     @Test
     fun `seq example rejects b`() {
-        assertEquals(false, runQuiver(load("seq.quiver"), "b"))
+        assertEquals(false, runQuiver(load("seq.quiver"), listOf("b")))
     }
 
     @Test
     fun `seq example rejects aba`() {
-        assertEquals(false, runQuiver(load("seq.quiver"), "aba"))
+        assertEquals(false, runQuiver(load("seq.quiver"), listOf("a", "b", "a")))
     }
 
     @Test
     fun `seq example emits the sequence it stored`() {
-        val output = captureStdout { runQuiver(load("seq.quiver"), "ab") }
+        val output = captureStdout { runQuiver(load("seq.quiver"), listOf("a", "b")) }
         assertTrue(output.contains("[seq q1,0]"), "Expected the stored sequence, got: $output")
     }
 
     @Test
     fun `binding example accepts ab`() {
-        assertEquals(true, runQuiver(load("binding.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("binding.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `binding example rejects a`() {
-        assertEquals(false, runQuiver(load("binding.quiver"), "a"))
+        assertEquals(false, runQuiver(load("binding.quiver"), listOf("a")))
     }
 
     @Test
     fun `binding example rejects aa`() {
-        assertEquals(false, runQuiver(load("binding.quiver"), "aa"))
+        assertEquals(false, runQuiver(load("binding.quiver"), listOf("a", "a")))
     }
 
     @Test
     fun `binding example creates the transition that accepts the rest`() {
         val automaton = automatonOf("binding.quiver")
-        step("q0", "a", automaton, strategyOf("binding.quiver"))
+        step("q0", Label.Symbol("a"), automaton, strategyOf("binding.quiver"))
         val created = automaton.transitions.any { it.from == "q0" && it.symbol == "b" }
         assertTrue(created, "The (q0,b) transition was not inserted")
     }
 
     @Test
     fun `adaptive insert example accepts ab`() {
-        assertEquals(true, runQuiver(load("adaptive-insert.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("adaptive-insert.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `adaptive insert example rejects b`() {
-        assertEquals(false, runQuiver(load("adaptive-insert.quiver"), "b"))
+        assertEquals(false, runQuiver(load("adaptive-insert.quiver"), listOf("b")))
     }
 
     @Test
     fun `adaptive insert example rejects a`() {
-        assertEquals(false, runQuiver(load("adaptive-insert.quiver"), "a"))
+        assertEquals(false, runQuiver(load("adaptive-insert.quiver"), listOf("a")))
     }
 
     @Test
     fun `adaptive insert example creates the transition`() {
         val automaton = automatonOf("adaptive-insert.quiver")
-        step("q0", "a", automaton, strategyOf("adaptive-insert.quiver"))
+        step("q0", Label.Symbol("a"), automaton, strategyOf("adaptive-insert.quiver"))
         val created = automaton.transitions.any { it.from == "q0" && it.symbol == "b" }
         assertTrue(created, "The (q0,b) transition was not inserted")
     }
 
     @Test
     fun `adaptive threshold example accepts four a's`() {
-        assertEquals(true, runQuiver(load("adaptive-threshold.quiver"), "aaaa"))
+        assertEquals(true, runQuiver(load("adaptive-threshold.quiver"), listOf("a", "a", "a", "a")))
     }
 
     @Test
     fun `adaptive threshold example rejects three a's`() {
-        assertEquals(false, runQuiver(load("adaptive-threshold.quiver"), "aaa"))
+        assertEquals(false, runQuiver(load("adaptive-threshold.quiver"), listOf("a", "a", "a")))
     }
 
     @Test
     fun `adaptive threshold example rejects five a's`() {
-        assertEquals(false, runQuiver(load("adaptive-threshold.quiver"), "aaaaa"))
+        assertEquals(false, runQuiver(load("adaptive-threshold.quiver"), listOf("a", "a", "a", "a", "a")))
     }
 
     @Test
     fun `adaptive threshold example retargets the transition at the threshold`() {
         val automaton = automatonOf("adaptive-threshold.quiver")
         val strategy = strategyOf("adaptive-threshold.quiver")
-        repeat(3) { step("q0", "a", automaton, strategy) }
+        repeat(3) { step("q0", Label.Symbol("a"), automaton, strategy) }
         val before = automaton.transitions.first { it.from == "q0" && it.symbol == "a" }.to
         assertEquals("q0", before, "The (q0,a) transition was retargeted before the threshold")
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         val after = automaton.transitions.first { it.from == "q0" && it.symbol == "a" }.to
         assertEquals("q2", after, "The (q0,a) transition was not retargeted at the threshold")
     }
 
     @Test
     fun `adaptive remove example accepts two a's`() {
-        assertEquals(true, runQuiver(load("adaptive-remove.quiver"), "aa"))
+        assertEquals(true, runQuiver(load("adaptive-remove.quiver"), listOf("a", "a")))
     }
 
     @Test
     fun `adaptive remove example rejects three a's`() {
-        assertEquals(false, runQuiver(load("adaptive-remove.quiver"), "aaa"))
+        assertEquals(false, runQuiver(load("adaptive-remove.quiver"), listOf("a", "a", "a")))
     }
 
     @Test
     fun `adaptive remove example deletes the transition`() {
         val automaton = automatonOf("adaptive-remove.quiver")
-        step("q1", "a", automaton, strategyOf("adaptive-remove.quiver"))
+        step("q1", Label.Symbol("a"), automaton, strategyOf("adaptive-remove.quiver"))
         val survives = automaton.transitions.any { it.from == "q1" && it.symbol == "a" }
         assertFalse(survives, "The (q1,a) transition was not removed")
     }
 
     @Test
     fun `sweep example accepts bz`() {
-        assertEquals(true, runQuiver(load("sweep.quiver"), "bz"))
+        assertEquals(true, runQuiver(load("sweep.quiver"), listOf("b", "z")))
     }
 
     @Test
     fun `sweep example rejects b`() {
-        assertEquals(false, runQuiver(load("sweep.quiver"), "b"))
+        assertEquals(false, runQuiver(load("sweep.quiver"), listOf("b")))
     }
 
     @Test
     fun `sweep example rejects bzz`() {
-        assertEquals(false, runQuiver(load("sweep.quiver"), "bzz"))
+        assertEquals(false, runQuiver(load("sweep.quiver"), listOf("b", "z", "z")))
     }
 
     @Test
     fun `sweep example retargets every transition that leaves q0`() {
         val automaton = automatonOf("sweep.quiver")
         val strategy = strategyOf("sweep.quiver")
-        step("q0", "b", automaton, strategy)
-        step("q1", "z", automaton, strategy)
+        step("q0", Label.Symbol("b"), automaton, strategy)
+        step("q1", Label.Symbol("z"), automaton, strategy)
         val retargeted = automaton.transitions.filter { it.from == "q0" }
         assertEquals(3, retargeted.size)
         assertTrue(retargeted.all { it.to == "q2" }, "The transitions leaving q0 were not all retargeted")
@@ -870,7 +881,7 @@ class QuiverTest {
 
     @Test
     fun `sweep example prints the symbol of every transition it sweeps`() {
-        val output = captureStdout { runQuiver(load("sweep.quiver"), "bz") }
+        val output = captureStdout { runQuiver(load("sweep.quiver"), listOf("b", "z")) }
         assertTrue(output.contains("a"), "Expected the symbol a, got: $output")
         assertTrue(output.contains("b"), "Expected the symbol b, got: $output")
         assertTrue(output.contains("c"), "Expected the symbol c, got: $output")
@@ -878,7 +889,7 @@ class QuiverTest {
 
     @Test
     fun `the trace of a sweep names the transition it sweeps`() {
-        val output = captureStderr { runQuiver(load("sweep.quiver"), "bz", trace = true) }
+        val output = captureStderr { runQuiver(load("sweep.quiver"), listOf("b", "z"), trace = true) }
         assertTrue(
             output.contains("sweep: (q0,\$s) -> (\$t,\$v) on (q0,a)->(q0,0)"),
             "Expected the sweep of the first transition, got: $output",
@@ -887,60 +898,60 @@ class QuiverTest {
 
     @Test
     fun `inspect example accepts ab`() {
-        assertEquals(true, runQuiver(load("inspect.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("inspect.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `inspect example rejects a`() {
-        assertEquals(false, runQuiver(load("inspect.quiver"), "a"))
+        assertEquals(false, runQuiver(load("inspect.quiver"), listOf("a")))
     }
 
     @Test
     fun `inspect example prints the targets and the symbols of q0`() {
-        val output = captureStdout { runQuiver(load("inspect.quiver"), "ab") }
+        val output = captureStdout { runQuiver(load("inspect.quiver"), listOf("a", "b")) }
         assertTrue(output.contains("[seq q0,q1]"), "Expected the targets of q0, got: $output")
         assertTrue(output.contains("[seq a,b]"), "Expected the symbols of q0, got: $output")
     }
 
     @Test
     fun `inspect example prints the size of the sequence and the emptiness of q2`() {
-        val output = captureStdout { runQuiver(load("inspect.quiver"), "ab") }
+        val output = captureStdout { runQuiver(load("inspect.quiver"), listOf("a", "b")) }
         assertTrue(output.contains("2"), "Expected the size of the sequence, got: $output")
         assertTrue(output.contains("true"), "Expected the emptiness of q2, got: $output")
     }
 
     @Test
     fun `counter machine example accepts an even number`() {
-        assertEquals(true, runQuiver(load("counter-machine.quiver"), "aaz"))
+        assertEquals(true, runQuiver(load("counter-machine.quiver"), listOf("a", "a", "z")))
     }
 
     @Test
     fun `counter machine example accepts the empty number`() {
-        assertEquals(true, runQuiver(load("counter-machine.quiver"), "z"))
+        assertEquals(true, runQuiver(load("counter-machine.quiver"), listOf("z")))
     }
 
     @Test
     fun `counter machine example rejects an odd number`() {
-        assertEquals(false, runQuiver(load("counter-machine.quiver"), "aaaz"))
+        assertEquals(false, runQuiver(load("counter-machine.quiver"), listOf("a", "a", "a", "z")))
     }
 
     @Test
     fun `counter machine example rejects an input without the marker`() {
         // The marker is what starts the machine: without it, the automaton
         // rests on the loading state, which is not accepting.
-        assertEquals(false, runQuiver(load("counter-machine.quiver"), "aa"))
+        assertEquals(false, runQuiver(load("counter-machine.quiver"), listOf("a", "a")))
     }
 
     @Test
     fun `counter machine example rejects an input after the machine halts`() {
-        assertEquals(false, runQuiver(load("counter-machine.quiver"), "aazz"))
+        assertEquals(false, runQuiver(load("counter-machine.quiver"), listOf("a", "a", "z", "z")))
     }
 
     @Test
     fun `counter machine example computes a long number`() {
         // The counters are arbitrary-precision, and the budget covers the
         // internal steps of the simulation.
-        val input = "a".repeat(100) + "z"
+        val input = List(100) { "a" } + "z"
         assertEquals(true, runQuiver(load("counter-machine.quiver"), input))
     }
 
@@ -951,7 +962,7 @@ class QuiverTest {
         // then the budget is exhausted.
         val ex =
             assertFailsWith<EpsilonClosureException> {
-                runQuiver(load("counter-machine.quiver"), "aaaaaaz", maxSteps = 8)
+                runQuiver(load("counter-machine.quiver"), listOf("a", "a", "a", "a", "a", "a", "z"), maxSteps = 8)
             }
         val msg = ex.message ?: ""
         assertContains(msg, "Epsilon closure did not terminate")
@@ -965,49 +976,49 @@ class QuiverTest {
 
     @Test
     fun `nondet example accepts a via the q2 path`() {
-        assertEquals(true, runQuiver(load("nondet.quiver"), "a", nondet = true))
+        assertEquals(true, runQuiver(load("nondet.quiver"), listOf("a"), nondet = true))
     }
 
     @Test
     fun `nondet example rejects ab`() {
-        assertEquals(false, runQuiver(load("nondet.quiver"), "ab", nondet = true))
+        assertEquals(false, runQuiver(load("nondet.quiver"), listOf("a", "b"), nondet = true))
     }
 
     @Test
     fun `nondet example rejects ac`() {
-        assertEquals(false, runQuiver(load("nondet.quiver"), "ac", nondet = true))
+        assertEquals(false, runQuiver(load("nondet.quiver"), listOf("a", "c"), nondet = true))
     }
 
     @Test
     fun `nondet example rejects b`() {
-        assertEquals(false, runQuiver(load("nondet.quiver"), "b", nondet = true))
+        assertEquals(false, runQuiver(load("nondet.quiver"), listOf("b"), nondet = true))
     }
 
     @Test
     fun `nondet example rejects empty`() {
-        assertEquals(false, runQuiver(load("nondet.quiver"), "", nondet = true))
+        assertEquals(false, runQuiver(load("nondet.quiver"), emptyList(), nondet = true))
     }
 
     @Test
     fun `nondet example behaves deterministically without --nondet`() {
         // Without --nondet, only the first (q0,a)->(q1,0) transition is used.
-        assertEquals(false, runQuiver(load("nondet.quiver"), "a"))
-        assertEquals(false, runQuiver(load("nondet.quiver"), "ab"))
+        assertEquals(false, runQuiver(load("nondet.quiver"), listOf("a")))
+        assertEquals(false, runQuiver(load("nondet.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `nondet adaptive accepts ab via q1 path`() {
-        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), "ab", nondet = true))
+        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), listOf("a", "b"), nondet = true))
     }
 
     @Test
     fun `nondet adaptive accepts ac via q2 path`() {
-        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), "ac", nondet = true))
+        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), listOf("a", "c"), nondet = true))
     }
 
     @Test
     fun `nondet adaptive rejects a`() {
-        assertEquals(false, runQuiver(load("nondet-adaptive.quiver"), "a", nondet = true))
+        assertEquals(false, runQuiver(load("nondet-adaptive.quiver"), listOf("a"), nondet = true))
     }
 
     @Test
@@ -1015,42 +1026,42 @@ class QuiverTest {
         // Path via q1 retargets (q1,b) to q3; path via q2 retargets (q2,c) to q3.
         // Each path's automaton is independent: neither path's insert/remove
         // affects the other path's future transitions.
-        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), "ab", nondet = true))
-        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), "ac", nondet = true))
+        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), listOf("a", "b"), nondet = true))
+        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), listOf("a", "c"), nondet = true))
     }
 
     @Test
     fun `nondet adaptive behaves deterministically without --nondet`() {
         // Without --nondet, only the first (q0,a)->(q1,0) transition is used.
-        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), "ab"))
-        assertEquals(false, runQuiver(load("nondet-adaptive.quiver"), "ac"))
+        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), listOf("a", "b")))
+        assertEquals(false, runQuiver(load("nondet-adaptive.quiver"), listOf("a", "c")))
     }
 
     @Test
     fun `nondet example kills all paths mid input`() {
         // After 'a': frontier = {q1, q2}. After 'b': q1 survives, q2 dies.
         // After 'c': q1 has no c-transition, frontier becomes empty.
-        assertEquals(false, runQuiver(load("nondet.quiver"), "abc", nondet = true))
+        assertEquals(false, runQuiver(load("nondet.quiver"), listOf("a", "b", "c"), nondet = true))
     }
 
     @Test
     fun `nondet example with trace exercises the trace path`() {
         // trace = true exercises the trace output lines in stepNondet and
         // processTransitionNondet without changing the result.
-        assertEquals(true, runQuiver(load("nondet.quiver"), "a", trace = true, nondet = true))
-        assertEquals(false, runQuiver(load("nondet.quiver"), "abc", trace = true, nondet = true))
+        assertEquals(true, runQuiver(load("nondet.quiver"), listOf("a"), trace = true, nondet = true))
+        assertEquals(false, runQuiver(load("nondet.quiver"), listOf("a", "b", "c"), trace = true, nondet = true))
     }
 
     @Test
     fun `nondet all strategy accepts a`() {
         // The ALL strategy fires the rule on every matching transition,
         // each on its own automaton clone. Both q1 and q2 are accepting.
-        assertEquals(true, runQuiver(load("nondet-strategy.quiver"), "a", nondet = true))
+        assertEquals(true, runQuiver(load("nondet-strategy.quiver"), listOf("a"), nondet = true))
     }
 
     @Test
     fun `nondet all strategy rejects b`() {
-        assertEquals(false, runQuiver(load("nondet-strategy.quiver"), "b", nondet = true))
+        assertEquals(false, runQuiver(load("nondet-strategy.quiver"), listOf("b"), nondet = true))
     }
 
     @Test
@@ -1058,20 +1069,20 @@ class QuiverTest {
         // trace = true on a program with rules covers the trace output lines
         // in processTransitionNondet, including "no rule fired" when a path
         // has no applicable rule.
-        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), "ab", trace = true, nondet = true))
-        assertEquals(false, runQuiver(load("nondet-adaptive.quiver"), "a", trace = true, nondet = true))
+        assertEquals(true, runQuiver(load("nondet-adaptive.quiver"), listOf("a", "b"), trace = true, nondet = true))
+        assertEquals(false, runQuiver(load("nondet-adaptive.quiver"), listOf("a"), trace = true, nondet = true))
     }
 
     @Test
     fun `nondet repeat strategy accepts a`() {
         // The REPEAT strategy re-applies the rule on every matching transition,
         // each on its own automaton clone. Both q1 and q2 are accepting.
-        assertEquals(true, runQuiver(load("nondet-repeat.quiver"), "a", nondet = true))
+        assertEquals(true, runQuiver(load("nondet-repeat.quiver"), listOf("a"), nondet = true))
     }
 
     @Test
     fun `nondet repeat strategy rejects b`() {
-        assertEquals(false, runQuiver(load("nondet-repeat.quiver"), "b", nondet = true))
+        assertEquals(false, runQuiver(load("nondet-repeat.quiver"), listOf("b"), nondet = true))
     }
 
     // ---------------------------------------------------------------------
@@ -1083,17 +1094,17 @@ class QuiverTest {
         // The rule index groups the rules by the head key of their pattern.
         // A wildcard matches every subject, so it belongs to every group and
         // must not be hidden by the rules of the group it shares.
-        assertEquals(true, runQuiver(load("index-wildcard.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("index-wildcard.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `a variable rule fires next to a rule with another head key`() {
-        assertEquals(true, runQuiver(load("index-variable.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("index-variable.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `a binding rule fires next to a rule with another head key`() {
-        assertEquals(true, runQuiver(load("index-binding.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("index-binding.quiver"), listOf("a", "b")))
     }
 
     @Test
@@ -1101,7 +1112,7 @@ class QuiverTest {
         // The FSM header selects the named strategy, so the rules of that
         // strategy are the ones the run consults. The top-level rule of the
         // program belongs to no strategy and must not shadow them.
-        assertEquals(true, runQuiver(load("index-strategy.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("index-strategy.quiver"), listOf("a", "b")))
     }
 
     @Test
@@ -1109,8 +1120,8 @@ class QuiverTest {
         // The `first` strategy fires the first rule that matches, so the
         // wildcard rule, which is declared first, wins over the arrow-shaped
         // rule that follows it.
-        assertEquals(true, runQuiver(load("index-order.quiver"), "ab"))
-        assertEquals(false, runQuiver(load("index-order.quiver"), "ac"))
+        assertEquals(true, runQuiver(load("index-order.quiver"), listOf("a", "b")))
+        assertEquals(false, runQuiver(load("index-order.quiver"), listOf("a", "c")))
     }
 
     @Test
@@ -1128,10 +1139,11 @@ class QuiverTest {
             val rules = parseSource(load(name)).filterIsInstance<Decl.RuleDecl>().map { it.rule }
             val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, rules)
             val index = buildRuleIndex(rules)
-            for (input in listOf("a", "ab", "ac", "b", "")) {
+            for (text in listOf("a", "ab", "ac", "b", "")) {
+                val input = text.map { it.toString() }
                 val withIndex = recognize(input, automaton.clone(), strategy, ruleIndex = index)
                 val withoutIndex = recognize(input, automaton.clone(), strategy, ruleIndex = null)
-                assertEquals(withIndex, withoutIndex, "The rule index changed the result of $name for '$input'")
+                assertEquals(withIndex, withoutIndex, "The rule index changed the result of $name for '$text'")
             }
         }
     }
@@ -1145,7 +1157,7 @@ class QuiverTest {
         // The frontier keeps the paths apart, so the rule fires once on each
         // of them and the value is emitted twice.
         val output = captureStdout {
-            assertEquals(false, runQuiver(load("nondet-identical.quiver"), "a", nondet = true))
+            assertEquals(false, runQuiver(load("nondet-identical.quiver"), listOf("a"), nondet = true))
         }
         assertEquals("1\n1\n", output)
     }
@@ -1156,7 +1168,7 @@ class QuiverTest {
         // run that follows two transitions out of the same state exhausts a
         // budget of one unit.
         val ex = assertFailsWith<FuelExhaustedException> {
-            runQuiver(load("nondet-identical.quiver"), "a", nondet = true, maxSteps = 1)
+            runQuiver(load("nondet-identical.quiver"), listOf("a"), nondet = true, maxSteps = 1)
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("after 1 steps"), "Expected 'after 1 steps', got: $msg")
@@ -1170,7 +1182,7 @@ class QuiverTest {
     @Test
     fun `malformed mapping source reports a Quiver error`() {
         val ex = assertFailsWith<QuiverException> {
-            runQuiver(load("error-bad-mapping-left.quiver"), "a")
+            runQuiver(load("error-bad-mapping-left.quiver"), listOf("a"))
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("Invalid FSM mapping"), "Expected 'Invalid FSM mapping', got: $msg")
@@ -1179,7 +1191,7 @@ class QuiverTest {
     @Test
     fun `malformed mapping target reports a Quiver error`() {
         val ex = assertFailsWith<QuiverException> {
-            runQuiver(load("error-bad-mapping-right.quiver"), "a")
+            runQuiver(load("error-bad-mapping-right.quiver"), listOf("a"))
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("Invalid FSM mapping"), "Expected 'Invalid FSM mapping', got: $msg")
@@ -1188,7 +1200,7 @@ class QuiverTest {
     @Test
     fun `mapping entry that is not an arrow reports a Quiver error`() {
         val ex = assertFailsWith<QuiverException> {
-            runQuiver(load("error-bad-mapping-entry.quiver"), "a")
+            runQuiver(load("error-bad-mapping-entry.quiver"), listOf("a"))
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("Invalid FSM mapping"), "Expected 'Invalid FSM mapping', got: $msg")
@@ -1197,7 +1209,7 @@ class QuiverTest {
     @Test
     fun `arithmetic over a non-integer reports a Quiver error`() {
         val ex = assertFailsWith<QuiverException> {
-            runQuiver(load("error-bad-arithmetic.quiver"), "a")
+            runQuiver(load("error-bad-arithmetic.quiver"), listOf("a"))
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("Expected a integer"), "Expected 'Expected a integer', got: $msg")
@@ -1327,7 +1339,7 @@ class QuiverTest {
     @Test
     fun `clause whose pattern does not match is skipped`() {
         val automaton = automatonOf("clause-skip.quiver")
-        step("q0", "a", automaton, strategyOf("clause-skip.quiver"))
+        step("q0", Label.Symbol("a"), automaton, strategyOf("clause-skip.quiver"))
         val survives = automaton.transitions.any { it.from == "q1" && it.symbol == "b" }
         assertTrue(survives, "The (q1,b) transition was removed by a clause that did not match")
     }
@@ -1335,7 +1347,7 @@ class QuiverTest {
     @Test
     fun `binding in a pattern captures the matched term`() {
         val automaton = automatonOf("binding.quiver")
-        step("q0", "a", automaton, strategyOf("binding.quiver"))
+        step("q0", Label.Symbol("a"), automaton, strategyOf("binding.quiver"))
         val survives = automaton.transitions.any { it.from == "q0" && it.symbol == "a" }
         assertFalse(survives, "The bound transition was not removed")
     }
@@ -1346,7 +1358,7 @@ class QuiverTest {
 
     @Test
     fun `diamond include is not a cycle`() {
-        assertEquals(true, runQuiver(load("diamond-main.quiver"), "a", baseDir = "src/test/resources"))
+        assertEquals(true, runQuiver(load("diamond-main.quiver"), listOf("a"), baseDir = "src/test/resources"))
     }
 
     // ---------------------------------------------------------------------
@@ -1356,7 +1368,7 @@ class QuiverTest {
     @Test
     fun `fuel exhaustion reports the number of steps taken`() {
         val ex = assertFailsWith<FuelExhaustedException> {
-            runQuiver(load("simple.quiver"), "ab", maxSteps = 1)
+            runQuiver(load("simple.quiver"), listOf("a", "b"), maxSteps = 1)
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("after 1 steps"), "Expected 'after 1 steps', got: $msg")
@@ -1365,7 +1377,7 @@ class QuiverTest {
     @Test
     fun `fuel counter exhausts with zero budget`() {
         val ex = assertFailsWith<FuelExhaustedException> {
-            runQuiver(load("simple.quiver"), "ab", maxSteps = 0)
+            runQuiver(load("simple.quiver"), listOf("a", "b"), maxSteps = 0)
         }
         val msg = ex.message ?: ""
         assertTrue(msg.contains("after 0 steps"), "Expected 'after 0 steps', got: $msg")
@@ -1386,7 +1398,7 @@ class QuiverTest {
         fsm.mapping.forEach { arrow ->
             val entry = mappingEntry(arrow)
             val value = evalExpr(entry.value, emptyMap(), fsm.start, automaton)
-            automaton.addTransition(entry.from, entry.symbol, entry.to, value)
+            automaton.addTransition(entry.from, entry.label, entry.to, value)
         }
         return automaton
     }

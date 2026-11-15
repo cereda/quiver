@@ -1,0 +1,11 @@
+# A state named `epsilon`: the reserved word is legal where a state name is
+# expected, since a state name is never a symbol.
+
+@fsm => {
+  start => epsilon
+  accepting => $seq [ q1 ]
+  mapping => {
+    (epsilon, a) -> (q1, 0)
+    (q1, b) -> (epsilon, 0)
+  }
+}

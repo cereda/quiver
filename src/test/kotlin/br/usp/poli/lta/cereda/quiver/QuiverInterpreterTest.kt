@@ -238,7 +238,7 @@ class QuiverInterpreterTest {
                 rule("(q0, a) -> (\$x, \$n)", "_ => (q0, c) -> (q1, 0)"),
             )
         val strategy = Strategy("all", StrategyKind.ALL, DEFAULT_MAX_ITERATIONS, rules)
-        assertTrue(recognize("a", automaton, strategy))
+        assertTrue(recognize(listOf("a"), automaton, strategy))
         assertEquals(3, automaton.transitions.size)
     }
 
@@ -249,7 +249,7 @@ class QuiverInterpreterTest {
         automaton.accepting.add("q1")
         val rule = rule("(q0, a) -> (\$x, \$n) when q0", "_ => (q0, b) -> (q1, 0)")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("a", automaton, strategy))
+        assertTrue(recognize(listOf("a"), automaton, strategy))
         assertEquals(2, automaton.transitions.size)
     }
 
@@ -267,7 +267,7 @@ class QuiverInterpreterTest {
                 rule("42", "_ => (q0, f) -> (q1, 0)"),
             )
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, rules)
-        assertTrue(recognize("a", automaton, strategy))
+        assertTrue(recognize(listOf("a"), automaton, strategy))
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -292,7 +292,7 @@ class QuiverInterpreterTest {
                 rule("_ when false", "_ => (q0, j) -> (q1, 0)"),
             )
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, rules)
-        assertTrue(recognize("a", automaton, strategy))
+        assertTrue(recognize(listOf("a"), automaton, strategy))
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -301,8 +301,8 @@ class QuiverInterpreterTest {
         val automaton = emptyAutomaton()
         automaton.addTransition("q0", "a", "q1", Value.IntVal(0))
         automaton.accepting.add("q1")
-        assertTrue(recognize("a", automaton, null))
-        assertTrue(!recognize("b", automaton, null))
+        assertTrue(recognize(listOf("a"), automaton, null))
+        assertTrue(!recognize(listOf("b"), automaton, null))
     }
 
     @Test
@@ -312,7 +312,7 @@ class QuiverInterpreterTest {
         automaton.accepting.add("q1")
         val rules = listOf(rule("42", "_ => (q0, b) -> (q1, 0)"))
         val strategy = Strategy("all", StrategyKind.ALL, DEFAULT_MAX_ITERATIONS, rules)
-        assertTrue(recognize("a", automaton, strategy))
+        assertTrue(recognize(listOf("a"), automaton, strategy))
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -322,7 +322,7 @@ class QuiverInterpreterTest {
         automaton.addTransition("q0", "a", "q1", Value.IntVal(0))
         val errors =
             captureStderr {
-                assertTrue(!recognize("b", automaton, null, trace = true))
+                assertTrue(!recognize(listOf("b"), automaton, null, trace = true))
             }
         assertContains(errors, "transition=NULL")
     }
@@ -338,7 +338,7 @@ class QuiverInterpreterTest {
         automaton.accepting.add("q1")
         val rule = rule("(q0, a) -> (\$x, \$n)", "_ => 42")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("a", automaton, strategy))
+        assertTrue(recognize(listOf("a"), automaton, strategy))
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -351,7 +351,7 @@ class QuiverInterpreterTest {
         // denote a transition and nothing is inserted.
         val rule = rule("(q0, a) -> (\$x, \$n)", "_ => (q0, a) -> (0, 0)")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("a", automaton, strategy))
+        assertTrue(recognize(listOf("a"), automaton, strategy))
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -364,7 +364,7 @@ class QuiverInterpreterTest {
         // subject, and denotes the consulted transition.
         val rule = rule("(q0, a) -> (\$x, \$n)", "(\$f, \$s) => _")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("a", automaton, strategy))
+        assertTrue(recognize(listOf("a"), automaton, strategy))
         assertEquals(0, automaton.transitions.size)
     }
 
@@ -378,7 +378,7 @@ class QuiverInterpreterTest {
         // clause is skipped.
         val rule = rule("(q0, a) -> (\$x, \$n)", "(q0, a) => _")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("a", automaton, strategy))
+        assertTrue(recognize(listOf("a"), automaton, strategy))
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -390,7 +390,7 @@ class QuiverInterpreterTest {
         // The wildcard denotes no transition, so the clause removes nothing.
         val rule = rule("(q0, a) -> (\$x, \$n)", "_ => _")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("a", automaton, strategy))
+        assertTrue(recognize(listOf("a"), automaton, strategy))
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -403,7 +403,7 @@ class QuiverInterpreterTest {
         // nothing is inserted.
         val rule = rule("(q0, a) -> (\$x, \$n)", "_ => (q0, b)")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("a", automaton, strategy))
+        assertTrue(recognize(listOf("a"), automaton, strategy))
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -411,7 +411,7 @@ class QuiverInterpreterTest {
     fun `a step without a strategy takes the transition`() {
         val automaton = emptyAutomaton()
         automaton.addTransition("q0", "a", "q1", Value.IntVal(0))
-        val result = step("q0", "a", automaton, null)
+        val result = step("q0", Label.Symbol("a"), automaton, null)
         assertEquals("q1", result.nextState)
     }
 
@@ -422,7 +422,7 @@ class QuiverInterpreterTest {
         automaton.accepting.add("q1")
         val rule = rule("(q0, a) -> (\$x, \$n)", "(\$f, \$s) => _")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        val result = step("q0", "a", automaton, strategy)
+        val result = step("q0", Label.Symbol("a"), automaton, strategy)
         assertEquals("q1", result.nextState)
         assertEquals(0, automaton.transitions.size)
     }
@@ -436,7 +436,7 @@ class QuiverInterpreterTest {
         val automaton = sweepAutomaton()
         val rule = rule("(q1, c) -> (\$to, \$n)", "each (q0, \$s) -> (\$t, \$v) => { _ => (q0, \$s) -> (q2, \$v) }")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("ac", automaton, strategy))
+        assertTrue(recognize(listOf("a", "c"), automaton, strategy))
         // Both transitions that leave q0 were retargeted to q2.
         assertEquals(2, automaton.transitions.count { it.from == "q0" && it.to == "q2" })
     }
@@ -446,7 +446,7 @@ class QuiverInterpreterTest {
         val automaton = sweepAutomaton()
         val rule = rule("(q1, c) -> (\$to, \$n)", "each (q0, \$s) -> (\$t, \$v) => { _ => (q1, \$s) -> (q2, \$s) }")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("ac", automaton, strategy))
+        assertTrue(recognize(listOf("a", "c"), automaton, strategy))
         // Each firing bound the symbol of the transition it swept.
         val inserted = automaton.transitions.filter { it.from == "q1" }
         assertEquals(3, inserted.size)
@@ -459,7 +459,7 @@ class QuiverInterpreterTest {
         val automaton = sweepAutomaton()
         val rule = rule("(q1, c) -> (\$to, \$n)", "each (q9, \$s) -> (\$t, \$v) => { _ => (q9, \$s) -> (q0, \$v) }")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("ac", automaton, strategy))
+        assertTrue(recognize(listOf("a", "c"), automaton, strategy))
         assertEquals(0, automaton.transitions.count { it.from == "q9" })
         assertEquals(2, automaton.transitions.count { it.from == "q0" })
     }
@@ -469,7 +469,7 @@ class QuiverInterpreterTest {
         val automaton = sweepAutomaton()
         val rule = rule("(q1, c) -> (\$to, \$n)", "each (q0, \$s) -> (\$t, \$v) => { (q0, \$s) -> (\$t, \$v) => _ }")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("ac", automaton, strategy))
+        assertTrue(recognize(listOf("a", "c"), automaton, strategy))
         assertEquals(0, automaton.transitions.count { it.from == "q0" })
     }
 
@@ -480,7 +480,7 @@ class QuiverInterpreterTest {
         // that did not work on a snapshot would never end.
         val rule = rule("(q1, c) -> (\$to, \$n)", "each (q0, \$s) -> (\$t, \$v) => { _ => (q0, \$s) -> (q2, \$v) }")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("ac", automaton, strategy))
+        assertTrue(recognize(listOf("a", "c"), automaton, strategy))
         assertEquals(3, automaton.transitions.size)
     }
 
@@ -493,7 +493,7 @@ class QuiverInterpreterTest {
                 "_ => { each (q0, \$s) -> (\$t, \$v) => { _ => (q0, \$s) -> (q2, \$v) } }",
             )
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("ac", automaton, strategy))
+        assertTrue(recognize(listOf("a", "c"), automaton, strategy))
         assertEquals(2, automaton.transitions.count { it.from == "q0" && it.to == "q2" })
     }
 
@@ -509,7 +509,7 @@ class QuiverInterpreterTest {
                 "each (q0, \$s) -> (\$s, \$v) => { _ => (q0, \$s) -> (q2, \$v) }",
             )
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        assertTrue(recognize("ac", automaton, strategy))
+        assertTrue(recognize(listOf("a", "c"), automaton, strategy))
         assertEquals(0, automaton.transitions.count { it.from == "q0" && it.to == "q2" })
     }
 
@@ -593,7 +593,7 @@ class QuiverInterpreterTest {
         // does not fire: the transition keeps its original target.
         val rule = rule("(q1, c) -> (\$to, \$n) when targets-from(q9)", "_ => (q1, c) -> (q3, 0)")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        recognize("ac", automaton, strategy)
+        recognize(listOf("a", "c"), automaton, strategy)
         assertEquals("q2", automaton.transitions.first { it.from == "q1" && it.symbol == "c" }.to)
     }
 
@@ -602,7 +602,7 @@ class QuiverInterpreterTest {
         val automaton = sweepAutomaton()
         val rule = rule("(q1, c) -> (\$to, \$n) when targets-from(q0)", "_ => (q1, c) -> (q3, 0)")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        recognize("ac", automaton, strategy)
+        recognize(listOf("a", "c"), automaton, strategy)
         assertEquals("q3", automaton.transitions.first { it.from == "q1" && it.symbol == "c" }.to)
     }
 
@@ -611,7 +611,7 @@ class QuiverInterpreterTest {
         val automaton = sweepAutomaton()
         val rule = rule("(q1, c) -> (\$to, \$n) when is-empty(targets-from(q9))", "_ => (q1, c) -> (q3, 0)")
         val strategy = Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, listOf(rule))
-        recognize("ac", automaton, strategy)
+        recognize(listOf("a", "c"), automaton, strategy)
         assertEquals("q3", automaton.transitions.first { it.from == "q1" && it.symbol == "c" }.to)
     }
 
@@ -624,8 +624,8 @@ class QuiverInterpreterTest {
         val automaton = emptyAutomaton()
         automaton.addTransition("q0", "a", "q1", Value.IntVal(0))
         automaton.accepting.add("q1")
-        assertTrue(recognizeNondet("a", automaton, null))
-        assertTrue(!recognizeNondet("b", automaton, null))
+        assertTrue(recognizeNondet(listOf("a"), automaton, null))
+        assertTrue(!recognizeNondet(listOf("b"), automaton, null))
     }
 
     @Test
@@ -633,7 +633,7 @@ class QuiverInterpreterTest {
         val automaton = emptyAutomaton()
         automaton.addTransition("q0", "a", "q1", Value.IntVal(0))
         val frontier = listOf(FrontierState("q0", automaton))
-        val next = stepNondet(frontier, "a", null, false, Fuel(10))
+        val next = stepNondet(frontier, Label.Symbol("a"), null, false, Fuel(10))
         assertEquals(1, next.size)
         assertEquals("q1", next.single().state)
     }
@@ -644,7 +644,7 @@ class QuiverInterpreterTest {
         automaton.addTransition("q0", "a", "q1", Value.IntVal(0))
         automaton.addTransition("q0", "a", "q2", Value.IntVal(0))
         val frontier = listOf(FrontierState("q0", automaton))
-        val next = stepNondet(frontier, "a", null, false, Fuel(10))
+        val next = stepNondet(frontier, Label.Symbol("a"), null, false, Fuel(10))
         assertEquals(listOf("q1", "q2"), next.map { it.state })
     }
 
@@ -653,7 +653,7 @@ class QuiverInterpreterTest {
         val automaton = emptyAutomaton()
         automaton.addTransition("q0", "a", "q1", Value.IntVal(0))
         val frontier = listOf(FrontierState("q0", automaton))
-        val next = stepNondet(frontier, "b", null, false, Fuel(10))
+        val next = stepNondet(frontier, Label.Symbol("b"), null, false, Fuel(10))
         assertTrue(next.isEmpty())
     }
 
@@ -664,7 +664,7 @@ class QuiverInterpreterTest {
         automaton.accepting.add("q1")
         val rules = listOf(rule("42", "_ => (q0, b) -> (q1, 0)"))
         val strategy = Strategy("all", StrategyKind.ALL, DEFAULT_MAX_ITERATIONS, rules)
-        assertTrue(recognizeNondet("a", automaton, strategy))
+        assertTrue(recognizeNondet(listOf("a"), automaton, strategy))
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -675,7 +675,7 @@ class QuiverInterpreterTest {
         automaton.accepting.add("q1")
         val rules = listOf(rule("(q0, a) -> (\$x, \$n)", "_ => (q0, b) -> (q1, 0)"))
         val strategy = Strategy("repeat", StrategyKind.REPEAT, 3, rules)
-        assertTrue(recognizeNondet("a", automaton, strategy))
+        assertTrue(recognizeNondet(listOf("a"), automaton, strategy))
     }
 
     // ---------------------------------------------------------------------
@@ -686,7 +686,7 @@ class QuiverInterpreterTest {
     fun `an include with an absolute path is resolved`() {
         val included = File("src/test/resources/simple.quiver").absolutePath
         val source = "include \"$included\""
-        assertTrue(runQuiver(source, "ab", baseDir = "src/test/resources"))
+        assertTrue(runQuiver(source, listOf("a", "b"), baseDir = "src/test/resources"))
     }
 
     // ---------------------------------------------------------------------
@@ -697,7 +697,7 @@ class QuiverInterpreterTest {
     fun `a program without an fsm header runs`() {
         // Without a header the automaton starts at `q0` and has no
         // transitions: every input is rejected.
-        assertTrue(!runQuiver("(q0, a) -> (\$x, \$n) => { _ => (q0, a) -> (\$x, \$n) }", "a"))
+        assertTrue(!runQuiver("(q0, a) -> (\$x, \$n) => { _ => (q0, a) -> (\$x, \$n) }", listOf("a")))
     }
 
     @Test
@@ -731,7 +731,7 @@ class QuiverInterpreterTest {
               }
             }
             """.trimIndent()
-        assertTrue(runQuiver(source, "a"))
+        assertTrue(runQuiver(source, listOf("a")))
     }
 
     // ---------------------------------------------------------------------
@@ -837,7 +837,7 @@ class QuiverInterpreterTest {
         val automaton = emptyAutomaton()
         automaton.addTransition("q0", "a", "q1", Value.IntVal(0))
         val recognizer = Recognizer(automaton, null)
-        recognizer.input = "a"
+        recognizer.input = listOf("a")
         assertNotNull(recognizer.step())
         // The input is exhausted, and the recognizer has not finished yet.
         assertNull(recognizer.step())
@@ -848,7 +848,7 @@ class QuiverInterpreterTest {
         val automaton = emptyAutomaton()
         automaton.accepting.add("q0")
         val recognizer = Recognizer(automaton, null)
-        recognizer.input = ""
+        recognizer.input = emptyList()
         assertTrue(recognizer.runToCompletion())
         assertTrue(recognizer.finished)
     }
@@ -857,9 +857,88 @@ class QuiverInterpreterTest {
     fun `a recognizer runs to completion over a rejected input`() {
         val automaton = emptyAutomaton()
         val recognizer = Recognizer(automaton, null)
-        recognizer.input = ""
+        recognizer.input = emptyList()
         assertTrue(!recognizer.runToCompletion())
         assertTrue(recognizer.finished)
+    }
+
+    @Test
+    fun `the internal marker does not match a value that is not a symbol`() {
+        val matched = matchTerm(Expr.Epsilon, Value.IntVal(0), emptyMap())
+        assertNull(matched)
+    }
+
+    @Test
+    fun `the generator never matches a subject`() {
+        val matched = matchTerm(Expr.FreshState, Value.Symbol("q0"), emptyMap())
+        assertNull(matched)
+    }
+
+    @Test
+    fun `the pattern of a plain symbol expects a symbol`() {
+        assertEquals(Value.Type.SYMBOL, patternType(Expr.Sym("a")))
+        assertEquals(HeadKeys.SYMBOL, patternHeadKey(Expr.Sym("a")))
+    }
+
+    @Test
+    fun `the pattern of the internal marker expects a symbol`() {
+        assertEquals(Value.Type.SYMBOL, patternType(Expr.Epsilon))
+        assertEquals(HeadKeys.SYMBOL, patternHeadKey(Expr.Epsilon))
+    }
+
+    @Test
+    fun `the internal marker is rendered as the bare word`() {
+        assertEquals("epsilon", exprToString(Expr.Epsilon))
+    }
+
+    @Test
+    fun `the generator is rendered as its call`() {
+        assertEquals("fresh-state()", exprToString(Expr.FreshState))
+    }
+
+    @Test
+    fun `the removal of a set of symbols is traced as a set`() {
+        // The clause removes every transition of the state whose symbol
+        // belongs to the set, and the trace names the labels as a set.
+        val source =
+            """
+            @fsm => {
+              start => q0
+              accepting => ${'$'}seq [ q1 ]
+              mapping => {
+                (q0, a) -> (q0, set([a, b]))
+              }
+            }
+
+            (q0, a) -> (${'$'}to, %syms) => {
+              ((q0, %syms), (${'$'}to, ${'$'}n)) => _
+            }
+            """.trimIndent()
+        val trace = captureStderr { runQuiver(source, listOf("a"), trace = true) }
+        assertContains(trace, "remove transition (q0,{a,b})->*")
+    }
+
+    @Test
+    fun `a rule may single out the internal transition`() {
+        // The pattern of the rule holds the internal marker in the symbol
+        // slot of the transition, and the trace renders it.
+        val source =
+            """
+            @fsm => {
+              start => q0
+              accepting => ${'$'}seq [ q2 ]
+              mapping => {
+                (q0, epsilon) -> (q1, 0)
+                (q1, b) -> (q2, 0)
+              }
+            }
+
+            (q0, epsilon) -> (${'$'}to, ${'$'}n) => {
+              _ => (q0, epsilon) -> (q1, ${'$'}n + 1)
+            }
+            """.trimIndent()
+        val trace = captureStderr { runQuiver(source, listOf("b"), trace = true) }
+        assertContains(trace, "rule fired: (q0,epsilon) -> (${'$'}to,${'$'}n)")
     }
 
     /** Builds an empty automaton, used when a value is evaluated in isolation. */

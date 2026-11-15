@@ -4,6 +4,93 @@ package br.usp.poli.lta.cereda.quiver
 import java.math.BigInteger
 
 /**
+ * The label of a transition: the symbol it reacts to, or the internal marker.
+ *
+ * The label of a transition is either a symbol of the alphabet or the
+ * internal marker, the distinguished label of the transition that is taken
+ * without consuming an input symbol. The internal marker is not a symbol of
+ * the alphabet: the alphabet holds the symbols the automaton reads, and the
+ * internal transition reads nothing. A program that wants a symbol named
+ * `epsilon` writes it as a quoted string, and the two never collide.
+ */
+sealed interface Label {
+    /**
+     * A transition that reacts to a symbol of the alphabet.
+     *
+     * @property name the name of the symbol.
+     */
+    data class Symbol(val name: String) : Label
+
+    /** The internal marker: the transition taken without consuming a symbol. */
+    object Internal : Label
+
+    /**
+     * The text of the label: the name of the symbol, or the name the internal
+     * marker is written with.
+     */
+    val text: String
+        get() = when (this) {
+            is Symbol -> name
+            Internal -> INTERNAL_NAME
+        }
+
+    /**
+     * The rendering of the label, as the trace and the output of `emit` show
+     * it.
+     *
+     * The internal marker is written `epsilon`, and a literal symbol is
+     * written bare when its name is a plain one; the symbol named `epsilon`
+     * is written quoted, because the bare word is the internal marker.
+     */
+    fun render(): String = when (this) {
+        Internal -> INTERNAL_NAME
+        is Symbol -> if (isPlainSymbolName(name)) name else quoteSymbolName(name)
+    }
+
+    /** The constants shared by the labels. */
+    companion object {
+        /** The name the internal marker is written with, and rendered with. */
+        const val INTERNAL_NAME = "epsilon"
+    }
+}
+
+/**
+ * True when the name of a symbol is written bare in a program.
+ *
+ * A plain name starts with a letter and continues with letters, digits and
+ * underscores; the name of the internal marker is not plain, because the
+ * bare word `epsilon` is the marker itself.
+ *
+ * @param name the name of the symbol.
+ * @return true when the name is written bare.
+ */
+internal fun isPlainSymbolName(name: String): Boolean = name.isNotEmpty() &&
+    name[0].isLetter() &&
+    name.all { it.isLetterOrDigit() || it == '_' } &&
+    name != Label.INTERNAL_NAME
+
+/**
+ * Quotes the name of a symbol, escaping the characters that need it.
+ *
+ * @param name the name of the symbol.
+ * @return the quoted name.
+ */
+internal fun quoteSymbolName(name: String): String {
+    val escaped = buildString {
+        for (c in name) {
+            when (c) {
+                '"' -> append("\\\"")
+                '\\' -> append("\\\\")
+                '\n' -> append("\\n")
+                '\t' -> append("\\t")
+                else -> append(c)
+            }
+        }
+    }
+    return "\"$escaped\""
+}
+
+/**
  * A value manipulated by the Quiver term-rewriting interpreter.
  *
  * Quiver is a minimal, type-safe term rewriting language.
@@ -43,9 +130,24 @@ sealed class Value {
     /**
      * An atomic symbol such as `a`, `b`, `q0` or a state name.
      *
-     * @property name the symbol's name.
+     * The value carries a [Label]: a literal symbol, or the internal marker.
+     * The internal marker is a value of its own kind, and it is not a symbol
+     * of the alphabet.
+     *
+     * @property label the label of the symbol.
      */
-    data class Symbol(val name: String) : Value()
+    data class Symbol(val label: Label) : Value() {
+        /**
+         * Builds the value of a literal symbol.
+         *
+         * @param name the name of the symbol.
+         */
+        constructor(name: String) : this(Label.Symbol(name))
+
+        /** The name of the symbol: the name of a literal one, or the marker's. */
+        val name: String
+            get() = label.text
+    }
 
     /**
      * A binary tuple `(left, right)`, used to denote transitions such as `(q0, a)`.
@@ -179,7 +281,7 @@ sealed class Value {
  * @param v the value to render.
  */
 internal fun valueToString(v: Value): String = when (v) {
-    is Value.Symbol -> v.name
+    is Value.Symbol -> v.label.render()
 
     is Value.Pair -> "(${valueToString(v.left)},${valueToString(v.right)})"
 
@@ -300,6 +402,16 @@ sealed class Expr {
      * @property name the symbol's name, without the `$` of a variable.
      */
     data class Sym(val name: String) : Expr()
+
+    /**
+     * The internal marker: the reserved word `epsilon`.
+     *
+     * The marker denotes the internal transition, and it is not a symbol of
+     * the alphabet. It is legal only in the symbol position of a transition;
+     * a program that wants the symbol named `epsilon` writes it as a quoted
+     * string instead.
+     */
+    object Epsilon : Expr()
 
     /**
      * A binary tuple `(left, right)`.
@@ -488,6 +600,15 @@ sealed class Expr {
 
     /** Clone the current automaton: `clone-automaton()`. */
     object CloneAutomaton : Expr()
+
+    /**
+     * A fresh state: the generator of the theory, written `fresh-state()`.
+     *
+     * The expression evaluates to the name of a state the automaton does not
+     * know yet. Every evaluation mints a new name, so a rule may grow the
+     * automaton without bound; the fuel budget still bounds the growth.
+     */
+    object FreshState : Expr()
 }
 
 /**
@@ -504,36 +625,78 @@ typealias Env = Map<String, Value>
  * and the automaton can be non-deterministic.
  *
  * @property start the initial state name.
- * @property states the set of all known state names (grown by [addTransition]).
+ * @property states the set of all known state names (grown by [addTransition]
+ *   and by [freshState]).
  * @property accepting the set of accepting (final) state names.
  * @property transitions the current transition list, in insertion order.
+ * @property freshCounter the number of fresh states minted so far; it names
+ *   the next one.
  */
 data class Automaton(
     val start: String,
     val states: MutableSet<String>,
     val accepting: MutableSet<String>,
     val transitions: MutableList<Transition>,
+    var freshCounter: Int = 0,
 ) {
     /**
      * A single transition `(from, symbol) -> (to, value)`.
      *
      * @property from the source state name.
-     * @property symbol the input symbol consumed by this transition.
+     * @property label the label of the transition: the symbol it reacts to, or
+     *   the internal marker.
      * @property to the target state name.
      * @property value an auxiliary payload carried by the transition
      *   (defaults to 0); clauses may inspect and rewrite it.
      */
-    data class Transition(val from: String, val symbol: String, val to: String, val value: Value = Value.IntVal(0))
+    data class Transition(val from: String, val label: Label, val to: String, val value: Value = Value.IntVal(0)) {
+        /** The text of the label: the name of the symbol, or the marker's. */
+        val symbol: String
+            get() = label.text
+    }
 
     /**
      * Appends a transition, registering both endpoints as states. Multiple
-     * transitions may share the same (from, symbol) key, which makes the
+     * transitions may share the same (from, label) key, which makes the
      * automaton non-deterministic.
+     *
+     * @param from the source state name.
+     * @param label the label of the transition.
+     * @param to the target state name.
+     * @param value the payload the transition carries.
      */
-    fun addTransition(from: String, symbol: String, to: String, value: Value = Value.IntVal(0)) {
+    fun addTransition(from: String, label: Label, to: String, value: Value = Value.IntVal(0)) {
         states += from
         states += to
-        transitions += Transition(from, symbol, to, value)
+        transitions += Transition(from, label, to, value)
+    }
+
+    /**
+     * Appends a transition that reacts to a literal symbol.
+     *
+     * @param from the source state name.
+     * @param symbol the name of the symbol the transition reacts to.
+     * @param to the target state name.
+     * @param value the payload the transition carries.
+     */
+    fun addTransition(from: String, symbol: String, to: String, value: Value = Value.IntVal(0)) =
+        addTransition(from, Label.Symbol(symbol), to, value)
+
+    /**
+     * Mints a fresh state: a name the automaton does not know yet.
+     *
+     * The names are `g0`, `g1`, and so on, and the counter never goes back,
+     * so every name is minted once. The name is reserved as soon as it is
+     * minted: it joins the set of the states of the automaton, and the set
+     * only grows.
+     *
+     * @return the name of the fresh state.
+     */
+    fun freshState(): String {
+        val name = "g$freshCounter"
+        freshCounter++
+        states += name
+        return name
     }
 
     /** Deep-copies this automaton: new state sets and a new transition list. */
@@ -542,12 +705,13 @@ data class Automaton(
         states.toMutableSet(),
         accepting.toMutableSet(),
         transitions.toMutableList(),
+        freshCounter,
     )
 
     /** Renders the automaton in a debug-friendly notation. */
     override fun toString(): String {
         val acc = accepting.sorted().joinToString(",", prefix = "{", postfix = "}")
-        val tr = transitions.joinToString("; ") { "(${it.from}, ${it.symbol}) -> ${it.to}" }
+        val tr = transitions.joinToString("; ") { "(${it.from}, ${it.label.render()}) -> ${it.to}" }
         return "Automaton(states=$states, accepting=$acc, transitions=[$tr])"
     }
 }
@@ -560,6 +724,15 @@ data class Automaton(
  */
 class QuiverException(val line: Int = 0, val column: Int = 0, message: String) :
     Exception("line $line:col $column: $message")
+
+/**
+ * Thrown when a run has no input to recognize: neither the command line nor
+ * the program declares one.
+ *
+ * The failure has no place in the source, so it carries no position, and its
+ * message is the one the command line reports as it is.
+ */
+class NoInputException : Exception("the program declares no input; give one on the command line")
 
 /**
  * Thrown when the rewrite step counter exceeds the configured fuel budget,

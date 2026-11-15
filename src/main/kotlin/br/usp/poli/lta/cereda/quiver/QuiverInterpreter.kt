@@ -15,23 +15,14 @@ const val DEFAULT_MAX_STEPS = 10_000
 const val DEFAULT_MAX_ITERATIONS = 100
 
 /**
- * The name of the symbol that labels an **internal transition**: the epsilon
- * transition, which the run takes without consuming an input symbol.
- *
- * The name is an ordinary identifier, so the grammar is unchanged; it has its
- * special meaning only in the symbol position of a transition. A state may
- * still be named `epsilon`, since a state name is never a symbol.
- */
-const val EPSILON_SYMBOL = "epsilon"
-
-/**
  * Matches a pattern [expr] against a [subject], producing an [Env] of variable
  * bindings, or null when the match fails.
  *
  * Literal symbols match exactly; `$`-prefixed names are variables (bound on
  * first occurrence, occurrence-checked afterwards); `_` and [Expr.Wildcard]
- * match anything. Pairs, sequences and arrows match structurally; arithmetic
- * and other evaluated forms never match.
+ * match anything. The reserved word `epsilon` matches the internal marker
+ * and nothing else. Pairs, sequences and arrows match structurally;
+ * arithmetic and other evaluated forms never match.
  *
  * @param expr the pattern expression.
  * @param subject the value being matched.
@@ -41,15 +32,10 @@ const val EPSILON_SYMBOL = "epsilon"
 fun matchTerm(expr: Expr, subject: Value, env: Env): Env? = when (expr) {
     is Expr.Sym -> matchSym(expr.name, subject, env)
 
-    is Expr.Pair -> {
-        if (subject !is Value.Pair) {
-            null
-        } else {
-            matchTerm(expr.left, subject.left, env)?.let { env2 ->
-                matchTerm(expr.right, subject.right, env2)
-            }
-        }
-    }
+    is Expr.Epsilon ->
+        if (subject is Value.Symbol && subject.label == Label.Internal) env else null
+
+    is Expr.Pair -> matchPair(expr.left, expr.right, subject, env)
 
     is Expr.Seq -> {
         if (subject !is Value.Seq) {
@@ -59,15 +45,7 @@ fun matchTerm(expr: Expr, subject: Value, env: Env): Env? = when (expr) {
         }
     }
 
-    is Expr.Arrow -> {
-        if (subject !is Value.Pair) {
-            null
-        } else {
-            matchTerm(expr.left, subject.left, env)?.let { env2 ->
-                matchTerm(expr.right, subject.right, env2)
-            }
-        }
-    }
+    is Expr.Arrow -> matchPair(expr.left, expr.right, subject, env)
 
     is Expr.Plus -> {
         // Arithmetic expressions are not matched structurally; they evaluate.
@@ -122,6 +100,8 @@ fun matchTerm(expr: Expr, subject: Value, env: Env): Env? = when (expr) {
 
     is Expr.CloneAutomaton -> null
 
+    is Expr.FreshState -> null
+
     is Expr.Wildcard -> env
 }
 
@@ -137,12 +117,35 @@ private fun bindingKey(varName: String): String =
     if (varName.startsWith("$") || varName.startsWith("%")) varName else "$$varName"
 
 /**
+ * Matches a pair-like pattern against a subject.
+ *
+ * A pair and an arrow have the same shape: both are matched as a pair of
+ * terms, and the arrow has no arrow of its own to match.
+ *
+ * @param left the left-hand term of the pattern.
+ * @param right the right-hand term of the pattern.
+ * @param subject the value being matched.
+ * @param env the bindings accumulated so far.
+ * @return the extended environment, or null when the match fails.
+ */
+private fun matchPair(left: Expr, right: Expr, subject: Value, env: Env): Env? {
+    if (subject !is Value.Pair) return null
+    return matchTerm(left, subject.left, env)?.let { env2 ->
+        matchTerm(right, subject.right, env2)
+    }
+}
+
+/**
  * Matches a symbol-name pattern against a subject.
  *
  * `_` is the wildcard; `$`-prefixed names are variables (bound on first
  * occurrence, occurrence-checked afterwards); `%`-prefixed names are set
  * variables (see [matchSetVariable]); any other name must match a literal
  * symbol exactly.
+ *
+ * The name is compared against the label of the subject, and not against its
+ * text: the symbol named `epsilon` and the internal marker share a text, and
+ * they are different symbols.
  *
  * @return the extended environment, or null when the match fails.
  */
@@ -164,7 +167,7 @@ private fun matchSym(name: String, subject: Value, env: Env): Env? = when {
     name.startsWith("%") -> matchSetVariable(name, subject, env)
 
     // literal symbol: match exactly
-    else -> if (subject is Value.Symbol && subject.name == name) env else null
+    else -> if (subject is Value.Symbol && subject.label == Label.Symbol(name)) env else null
 }
 
 /**
@@ -222,6 +225,8 @@ fun evalExpr(expr: Expr, env: Env, currentState: String, automaton: Automaton): 
         val name = expr.name
         env[name] ?: Value.Symbol(name)
     }
+
+    is Expr.Epsilon -> Value.Symbol(Label.Internal)
 
     is Expr.Pair -> Value.Pair(
         evalExpr(expr.left, env, currentState, automaton),
@@ -285,6 +290,8 @@ fun evalExpr(expr: Expr, env: Env, currentState: String, automaton: Automaton): 
     is Expr.CloneAutomaton -> {
         Value.Automaton(automaton.clone())
     }
+
+    is Expr.FreshState -> Value.Symbol(automaton.freshState())
 }
 
 /**
@@ -305,7 +312,7 @@ private fun evalTransitionsFrom(state: Expr, env: Env, currentState: String, aut
     val trans = automaton.transitions.filter { it.from == stateName }
     return Value.Seq(
         trans.map { t ->
-            Value.Pair(Value.Symbol(t.symbol), Value.Symbol(t.to))
+            Value.Pair(Value.Symbol(t.label), Value.Symbol(t.to))
         },
     )
 }
@@ -402,7 +409,7 @@ private fun evalInspection(expr: Expr, env: Env, currentState: String, automaton
 
     is Expr.SymbolsFrom -> {
         val stateName = stateNameOf(expr.state, env, currentState, automaton, "symbols-from")
-        val symbols = automaton.transitions.filter { it.from == stateName }.map { it.symbol }.distinct()
+        val symbols = automaton.transitions.filter { it.from == stateName }.map { it.label }.distinct()
         Value.Seq(symbols.map { Value.Symbol(it) })
     }
 
@@ -509,12 +516,13 @@ class Fuel(val budget: Int) {
 
 /**
  * A single step of the adaptive automaton: given the current state, the next
- * input symbol, and the automaton, finds a matching transition, fires any
+ * input label, and the automaton, finds a matching transition, fires any
  * applicable rewrite rule, applies its clauses (insert/remove transitions),
  * and returns the next state (or null if no transition exists).
  *
  * @param state the current automaton state.
- * @param symbol the next input symbol to consume.
+ * @param label the label of the transition to take: the symbol the run reads,
+ *   or the internal marker.
  * @param automaton the automaton to rewrite (mutated by fired rules).
  * @param strategy the active rewriting strategy, or null for no rules.
  * @param trace when true, prints a step trace to stderr.
@@ -524,30 +532,32 @@ class Fuel(val budget: Int) {
  */
 fun step(
     state: String,
-    symbol: String,
+    label: Label,
     automaton: Automaton,
     strategy: Strategy?,
     trace: Boolean = false,
     fuel: Fuel = Fuel(Int.MAX_VALUE),
     ruleIndex: Map<String, List<Rule>>? = null,
 ): StepResult {
-    // Find a transition (state, symbol) -> (to, value)
-    val t = automaton.transitions.find { it.from == state && it.symbol == symbol }
+    // Find a transition (state, label) -> (to, value)
+    val t = automaton.transitions.find { it.from == state && it.label == label }
     if (t == null) {
-        if (trace) System.err.println("trace step state=$state symbol=$symbol transition=NULL (no transition)")
+        if (trace) {
+            System.err.println("trace step state=$state symbol=${label.render()} transition=NULL (no transition)")
+        }
         return StepResult(null)
     }
 
-    // The subject is the full transition: ((from, symbol), (to, value))
+    // The subject is the full transition: ((from, label), (to, value))
     val subject = Value.Pair(
-        Value.Pair(Value.Symbol(t.from), Value.Symbol(t.symbol)),
+        Value.Pair(Value.Symbol(t.from), Value.Symbol(t.label)),
         Value.Pair(Value.Symbol(t.to), t.value),
     )
 
     if (trace) {
         System.err.println(
-            "trace step state=$state symbol=$symbol " +
-                "transition=(${t.from},${t.symbol})->(${t.to},${valueToString(t.value)})",
+            "trace step state=$state symbol=${label.render()} " +
+                "transition=(${t.from},${label.render()})->(${t.to},${valueToString(t.value)})",
         )
     }
 
@@ -570,12 +580,12 @@ fun step(
                 // Try rules in source order; the first match fires once.
                 candidateRules
                     .firstNotNullOfOrNull { tryFireRule(it, subject, state, automaton, trace) }
-                    ?.let { reresolveTo(automaton, state, symbol, t.to) }
+                    ?.let { reresolveTo(automaton, state, label, t.to) }
 
             StrategyKind.ALL -> {
                 // Fire every rule whose pattern matches the subject.
                 val fired = candidateRules.mapNotNull { tryFireRule(it, subject, state, automaton, trace) }
-                if (fired.isNotEmpty()) reresolveTo(automaton, state, symbol, t.to) else null
+                if (fired.isNotEmpty()) reresolveTo(automaton, state, label, t.to) else null
             }
 
             StrategyKind.REPEAT -> {
@@ -589,7 +599,7 @@ fun step(
                     trace,
                     strategy?.maxIterations ?: DEFAULT_MAX_ITERATIONS,
                 )
-                reresolveTo(automaton, state, symbol, t.to)
+                reresolveTo(automaton, state, label, t.to)
             }
         }
 
@@ -639,13 +649,13 @@ private fun tryFireRule(rule: Rule, subject: Value, state: String, automaton: Au
 }
 
 /**
- * Re-resolves the transition leaving (state, symbol): the fired clauses may
+ * Re-resolves the transition leaving (state, label): the fired clauses may
  * have replaced or removed it.
  *
  * @return the transition's target state, or [fallback] when none exists.
  */
-private fun reresolveTo(automaton: Automaton, state: String, symbol: String, fallback: String): String =
-    automaton.transitions.find { it.from == state && it.symbol == symbol }?.to ?: fallback
+private fun reresolveTo(automaton: Automaton, state: String, label: Label, fallback: String): String =
+    automaton.transitions.find { it.from == state && it.label == label }?.to ?: fallback
 
 /**
  * Evaluates an optional guard expression with the given environment.
@@ -880,14 +890,17 @@ private fun rewriteSetVariables(expr: Expr, env: Env, variables: MutableMap<Stri
 private fun freshVariable(name: String, index: Int): String = "$${name.removePrefix("%")}#$index"
 
 /**
- * The subject term of a transition: `((from, symbol), (to, value))`, the shape
+ * The subject term of a transition: `((from, label), (to, value))`, the shape
  * a rule pattern and a sweep pattern are matched against.
+ *
+ * The label of the transition is carried as it is, so that a pattern may
+ * single out the internal marker.
  *
  * @param transition the transition to denote.
  * @return the term that denotes the transition.
  */
 private fun transitionSubject(transition: Automaton.Transition): Value = Value.Pair(
-    Value.Pair(Value.Symbol(transition.from), Value.Symbol(transition.symbol)),
+    Value.Pair(Value.Symbol(transition.from), Value.Symbol(transition.label)),
     Value.Pair(Value.Symbol(transition.to), transition.value),
 )
 
@@ -901,7 +914,7 @@ private fun subjectToString(subject: Value): String =
     if (subject is Value.Pair && subject.left is Value.Pair && subject.right is Value.Pair) {
         val key = subject.left
         val target = subject.right
-        val symbol = if (key.right is Value.Symbol) key.right.name else "?"
+        val symbol = valueToString(key.right)
         val from = if (key.left is Value.Symbol) key.left.name else "?"
         val to = if (target.left is Value.Symbol) target.left.name else "?"
         "($from,$symbol)->($to,${valueToString(target.right)})"
@@ -909,14 +922,14 @@ private fun subjectToString(subject: Value): String =
         valueToString(subject)
     }
 
-/** Removes every transition with the given (from, symbol) key, when present. */
+/** Removes every transition with the given (from, label) key, when present. */
 private fun removeTransition(key: RemovalKey?, automaton: Automaton, trace: Boolean) {
     if (key == null) return
     if (trace) {
-        System.err.println("trace   remove transition (${key.from},${symbolsToString(key.symbols)})->*")
+        System.err.println("trace   remove transition (${key.from},${labelsToString(key.labels)})->*")
     }
     automaton.transitions.removeAll {
-        it.from == key.from && it.symbol in key.symbols
+        it.from == key.from && it.label in key.labels
     }
 }
 
@@ -933,48 +946,76 @@ private fun insertTransition(ts: List<TransKey>, automaton: Automaton, trace: Bo
     if (trace) {
         for (t in ts) {
             System.err.println(
-                "trace   insert transition (${t.from},${t.sym})->(${t.to},${valueToString(t.value)})",
+                "trace   insert transition (${t.from},${t.label.render()})->" +
+                    "(${t.to},${valueToString(t.value)})",
             )
         }
     }
-    val keys = ts.map { it.from to it.sym }.toSet()
-    automaton.transitions.removeAll { it.from to it.symbol in keys }
+    val keys = ts.map { it.from to it.label }.toSet()
+    automaton.transitions.removeAll { it.from to it.label in keys }
     for (t in ts) {
-        automaton.addTransition(t.from, t.sym, t.to, t.value)
+        automaton.addTransition(t.from, t.label, t.to, t.value)
     }
 }
 
 /**
  * Internal representation of a full transition produced by evaluating a
  * clause's right-hand side, ready to be inserted via [Automaton.addTransition].
+ *
+ * @property from the source state.
+ * @property label the label of the transition: the symbol it reacts to, or
+ *   the internal marker.
+ * @property to the target state.
+ * @property value the payload the transition carries.
  */
-private data class TransKey(val from: String, val sym: String, val to: String, val value: Value)
+private data class TransKey(val from: String, val label: Label, val to: String, val value: Value)
 
 /**
  * The key of the transitions a removal clause denotes: the source state and
- * the symbols of the transitions, which are several when the clause denotes a
+ * the labels of the transitions, which are several when the clause denotes a
  * set of symbols.
  *
  * @property from the source state name.
- * @property symbols the symbols of the transitions to remove.
+ * @property labels the labels of the transitions to remove.
  */
-private data class RemovalKey(val from: String, val symbols: List<String>)
+private data class RemovalKey(val from: String, val labels: List<Label>)
 
 /**
- * Renders a list of symbols, as the trace does: a single symbol is written
- * alone, and several symbols are written as a set.
+ * Renders a list of labels, as the trace does: a single label is written
+ * alone, and several labels are written as a set.
  *
- * @param symbols the symbols to render.
- * @return the rendering of the symbols.
+ * @param labels the labels to render.
+ * @return the rendering of the labels.
  */
-private fun symbolsToString(symbols: List<String>): String =
-    if (symbols.size == 1) symbols.first() else symbols.joinToString(",", prefix = "{", postfix = "}")
+private fun labelsToString(labels: List<Label>): String = if (labels.size == 1) {
+    labels.first().render()
+} else {
+    labels.joinToString(",", prefix = "{", postfix = "}") { it.render() }
+}
 
 /**
- * The names a value denotes in a symbol position: the name of the symbol
- * itself, or the names of the elements of a set.
+ * The labels a value denotes in a symbol position: the label of the symbol
+ * itself, or the labels of the elements of a set.
  *
  * @param v the value in the symbol position.
+ * @return the labels, or null when the value is neither a symbol nor a set of
+ *   symbols.
+ */
+private fun symbolLabels(v: Value): List<Label>? {
+    val elements: List<Value> = when (v) {
+        is Value.Symbol -> listOf(v)
+        is Value.Set -> v.items.toList()
+        else -> return null
+    }
+    val labels = elements.mapNotNull { element -> (element as? Value.Symbol)?.label }
+    return if (labels.size == elements.size) labels else null
+}
+
+/**
+ * The names a value denotes in a state position: the name of the symbol
+ * itself, or the names of the elements of a set.
+ *
+ * @param v the value in the state position.
  * @return the names, or null when the value is neither a symbol nor a set of
  *   symbols.
  */
@@ -989,26 +1030,26 @@ private fun symbolNames(v: Value): List<String>? {
 }
 
 /**
- * Extracts the (from, symbol) key from a value that denotes a transition.
+ * Extracts the (from, label) key from a value that denotes a transition.
  *
  * The value is the shape of the subject of a step, that is the arrow
- * `((from, symbol), (to, value))`: the left-hand side of a clause is matched
+ * `((from, label), (to, value))`: the left-hand side of a clause is matched
  * against that subject, so it evaluates to that shape when it applies.
  *
- * The symbol may be a set, in which case the key denotes every transition
- * whose symbol belongs to the set: this is the bulk removal of a clause.
+ * The label may be a set, in which case the key denotes every transition
+ * whose label belongs to the set: this is the bulk removal of a clause.
  */
 private fun transitionKey(v: Value): RemovalKey? {
     val key = (v as? Value.Pair)?.left
     val from = ((key as? Value.Pair)?.left as? Value.Symbol)?.name
-    val symbols = (key as? Value.Pair)?.right?.let { symbolNames(it) }
-    return if (from != null && symbols != null) RemovalKey(from, symbols) else null
+    val labels = (key as? Value.Pair)?.right?.let { symbolLabels(it) }
+    return if (from != null && labels != null) RemovalKey(from, labels) else null
 }
 
 /**
- * Extracts the full transitions `(from, symbol) -> (to, value)` from a value.
+ * Extracts the full transitions `(from, label) -> (to, value)` from a value.
  *
- * The symbol and the target state may be sets, in which case the value
+ * The label and the target state may be sets, in which case the value
  * denotes several transitions: one per element of the set, and one per
  * combination of the two sets when both of them are sets. This is the bulk
  * insertion of a clause.
@@ -1017,11 +1058,11 @@ private fun transitions(v: Value): List<TransKey> {
     val key = (v as? Value.Pair)?.left
     val target = (v as? Value.Pair)?.right
     val from = ((key as? Value.Pair)?.left as? Value.Symbol)?.name
-    val symbols = (key as? Value.Pair)?.right?.let { symbolNames(it) }
+    val labels = (key as? Value.Pair)?.right?.let { symbolLabels(it) }
     val targets = (target as? Value.Pair)?.left?.let { symbolNames(it) }
-    if (from == null || symbols == null || targets == null) return emptyList()
-    return symbols.flatMap { symbol ->
-        targets.map { state -> TransKey(from, symbol, state, target.right) }
+    if (from == null || labels == null || targets == null) return emptyList()
+    return labels.flatMap { label ->
+        targets.map { state -> TransKey(from, label, state, target.right) }
     }
 }
 
@@ -1036,6 +1077,9 @@ internal fun patternType(expr: Expr): Value.Type? = when (expr) {
             expr.name.startsWith("%") -> Value.Type.SET
             else -> Value.Type.SYMBOL
         }
+
+    // The internal marker is a symbol value of its own kind.
+    is Expr.Epsilon -> Value.Type.SYMBOL
 
     is Expr.Pair -> Value.Type.PAIR
 
@@ -1144,6 +1188,9 @@ internal fun patternHeadKey(pattern: Expr): String = when (pattern) {
             else -> HeadKeys.SYMBOL
         }
 
+    // The internal marker is a symbol value.
+    is Expr.Epsilon -> HeadKeys.SYMBOL
+
     is Expr.Pair -> HeadKeys.PAIR
 
     is Expr.Seq -> HeadKeys.SEQ
@@ -1234,6 +1281,8 @@ internal fun buildRuleIndex(rules: List<Rule>): Map<String, List<Rule>> {
 internal fun exprToString(expr: Expr): String = when (expr) {
     is Expr.Sym -> expr.name
 
+    is Expr.Epsilon -> Label.INTERNAL_NAME
+
     is Expr.Pair -> "(${exprToString(expr.left)},${exprToString(expr.right)})"
 
     is Expr.Seq -> {
@@ -1279,11 +1328,13 @@ internal fun exprToString(expr: Expr): String = when (expr) {
 
     is Expr.Contains -> "contains(${exprToString(expr.set)},${exprToString(expr.element)})"
 
+    is Expr.FreshState -> "fresh-state()"
+
     else -> expr.toString()
 }
 
 /**
- * Recognizes an input string using the automaton and rules.
+ * Recognizes an input using the automaton and rules.
  * Returns true if the input is fully consumed and ends in an accepting state.
  *
  * The run is a sequence of closures and input-driven steps: the automaton
@@ -1292,13 +1343,18 @@ internal fun exprToString(expr: Expr): String = when (expr) {
  * transitions again after every symbol. The acceptance is decided on the
  * state the automaton rests in after the final closure.
  *
+ * @param input the input to recognize: the names of the input symbols, in
+ *   order.
+ * @param automaton the automaton to recognize against.
+ * @param strategy the active rewriting strategy, or null for no rules.
+ * @param trace when true, prints a step trace to stderr.
  * @param maxSteps maximum number of steps before throwing
  *   [FuelExhaustedException] (default: 10000).
  * @param ruleIndex optional index mapping head keys to rules, for faster lookup.
  * @return true when the input is fully consumed and ends in an accepting state.
  */
 fun recognize(
-    input: String,
+    input: List<String>,
     automaton: Automaton,
     strategy: Strategy?,
     trace: Boolean = false,
@@ -1310,7 +1366,7 @@ fun recognize(
     // The closure of the start state, before the first symbol.
     state = closeInternally(state, automaton, strategy, trace, fuel, ruleIndex)
     for (symbol in input) {
-        val result = step(state, symbol.toString(), automaton, strategy, trace, fuel, ruleIndex)
+        val result = step(state, Label.Symbol(symbol), automaton, strategy, trace, fuel, ruleIndex)
         if (result.nextState == null) return false
         state = result.nextState
         // The closure again, after every symbol.
@@ -1350,11 +1406,11 @@ private fun closeInternally(
     val start = fuel.taken
     var current = state
     while (true) {
-        val internal = automaton.transitions.find { it.from == current && it.symbol == EPSILON_SYMBOL }
+        val internal = automaton.transitions.find { it.from == current && it.label == Label.Internal }
         if (internal == null) return current
         val result =
             try {
-                step(current, EPSILON_SYMBOL, automaton, strategy, trace, fuel, ruleIndex)
+                step(current, Label.Internal, automaton, strategy, trace, fuel, ruleIndex)
             } catch (exhausted: FuelExhaustedException) {
                 throw EpsilonClosureException(
                     "Epsilon closure did not terminate: the budget was exhausted " +
@@ -1391,7 +1447,8 @@ data class FrontierState(val state: String, val automaton: Automaton)
  * may do, and not only the number of symbols it reads.
  *
  * @param frontier the current frontier: one (state, automaton) pair per path.
- * @param symbol the next input symbol to consume.
+ * @param label the label of the transition to take: the symbol the run reads,
+ *   or the internal marker.
  * @param strategy the active rewriting strategy, or null for no rules.
  * @param trace when true, prints a step trace to stderr.
  * @param fuel the run's fuel budget.
@@ -1400,7 +1457,7 @@ data class FrontierState(val state: String, val automaton: Automaton)
  */
 fun stepNondet(
     frontier: List<FrontierState>,
-    symbol: String,
+    label: Label,
     strategy: Strategy?,
     trace: Boolean,
     fuel: Fuel,
@@ -1409,11 +1466,11 @@ fun stepNondet(
     val nextFrontier = mutableListOf<FrontierState>()
 
     for (fs in frontier) {
-        val transitions = fs.automaton.transitions.filter { it.from == fs.state && it.symbol == symbol }
+        val transitions = fs.automaton.transitions.filter { it.from == fs.state && it.label == label }
         if (transitions.isEmpty()) {
             if (trace) {
                 System.err.println(
-                    "trace step state=${fs.state} symbol=$symbol transition=NULL (no transition)",
+                    "trace step state=${fs.state} symbol=${label.render()} transition=NULL (no transition)",
                 )
             }
             continue // this path dies
@@ -1459,22 +1516,22 @@ private fun processTransitionNondet(
     ruleIndex: Map<String, List<Rule>>?,
 ): TransitionResult {
     val state = transition.from
-    val symbol = transition.symbol
+    val label = transition.label
 
     // Each path gets its own automaton clone: insert/remove actions fired by
     // this path's rules cannot leak into another path.
     val pathAutomaton = automaton.clone()
 
-    // The subject is the full transition: ((from, symbol), (to, value))
+    // The subject is the full transition: ((from, label), (to, value))
     val subject = Value.Pair(
-        Value.Pair(Value.Symbol(transition.from), Value.Symbol(transition.symbol)),
+        Value.Pair(Value.Symbol(transition.from), Value.Symbol(transition.label)),
         Value.Pair(Value.Symbol(transition.to), transition.value),
     )
 
     if (trace) {
         System.err.println(
-            "trace step state=$state symbol=$symbol " +
-                "transition=(${transition.from},${transition.symbol})->(" +
+            "trace step state=$state symbol=${label.render()} " +
+                "transition=(${transition.from},${label.render()})->(" +
                 "${transition.to},${valueToString(transition.value)})",
         )
     }
@@ -1493,14 +1550,14 @@ private fun processTransitionNondet(
             // Try rules in source order; the first match fires once.
             candidateRules
                 .firstNotNullOfOrNull { tryFireRule(it, subject, state, pathAutomaton, trace) }
-                ?.let { reresolveTo(pathAutomaton, state, symbol, transition.to) }
+                ?.let { reresolveTo(pathAutomaton, state, label, transition.to) }
 
         StrategyKind.ALL -> {
             // Fire every rule whose pattern matches the subject.
             val fired = candidateRules.mapNotNull {
                 tryFireRule(it, subject, state, pathAutomaton, trace)
             }
-            if (fired.isNotEmpty()) reresolveTo(pathAutomaton, state, symbol, transition.to) else null
+            if (fired.isNotEmpty()) reresolveTo(pathAutomaton, state, label, transition.to) else null
         }
 
         StrategyKind.REPEAT -> {
@@ -1514,7 +1571,7 @@ private fun processTransitionNondet(
                 trace,
                 strategy?.maxIterations ?: DEFAULT_MAX_ITERATIONS,
             )
-            reresolveTo(pathAutomaton, state, symbol, transition.to)
+            reresolveTo(pathAutomaton, state, label, transition.to)
         }
     }
 
@@ -1539,7 +1596,8 @@ private fun processTransitionNondet(
  * symbol and after every symbol, and the acceptance is decided on the closed
  * frontier.
  *
- * @param input the input string to recognize.
+ * @param input the input to recognize: the names of the input symbols, in
+ *   order.
  * @param automaton the automaton to recognize against.
  * @param strategy the active rewriting strategy, or null for no rules.
  * @param trace when true, prints a step trace to stderr.
@@ -1549,7 +1607,7 @@ private fun processTransitionNondet(
  * @return true when at least one path accepts the input, false otherwise.
  */
 fun recognizeNondet(
-    input: String,
+    input: List<String>,
     automaton: Automaton,
     strategy: Strategy?,
     trace: Boolean = false,
@@ -1562,7 +1620,7 @@ fun recognizeNondet(
     frontier = closeFrontierInternally(frontier, strategy, trace, fuel, ruleIndex)
 
     for (symbol in input) {
-        frontier = stepNondet(frontier, symbol.toString(), strategy, trace, fuel, ruleIndex)
+        frontier = stepNondet(frontier, Label.Symbol(symbol), strategy, trace, fuel, ruleIndex)
         if (frontier.isNotEmpty()) {
             // The closure again, after every symbol.
             frontier = closeFrontierInternally(frontier, strategy, trace, fuel, ruleIndex)
@@ -1626,7 +1684,7 @@ private fun closeFrontierInternally(
  * @return true when the path has an internal transition.
  */
 private fun hasInternals(fs: FrontierState): Boolean =
-    fs.automaton.transitions.any { it.from == fs.state && it.symbol == EPSILON_SYMBOL }
+    fs.automaton.transitions.any { it.from == fs.state && it.label == Label.Internal }
 
 /**
  * Expands a path into the paths that follow its internal transitions: one
@@ -1647,7 +1705,7 @@ private fun expandInternally(
     fuel: Fuel,
     ruleIndex: Map<String, List<Rule>>?,
 ): List<FrontierState> {
-    val internals = fs.automaton.transitions.filter { it.from == fs.state && it.symbol == EPSILON_SYMBOL }
+    val internals = fs.automaton.transitions.filter { it.from == fs.state && it.label == Label.Internal }
     if (internals.isEmpty()) return listOf(fs)
     return internals.map { internal -> followInternal(internal, fs, strategy, trace, fuel, ruleIndex) }
 }
@@ -1701,8 +1759,8 @@ class Recognizer(
     /** The index of the next input symbol to consume. */
     var position: Int = 0
 
-    /** The pending input string being recognized. */
-    var input: String = ""
+    /** The pending input being recognized: the names of the input symbols. */
+    var input: List<String> = emptyList()
 
     /** True once recognition is complete (accepted or rejected). */
     var finished: Boolean = false
@@ -1720,9 +1778,9 @@ class Recognizer(
      *   recognizer has already finished.
      */
     fun step(): StepResult? {
-        if (finished || position >= input.length) return null
-        val symbol = input[position].toString()
-        val r = step(state, symbol, automaton, strategy, trace, fuel, ruleIndex)
+        if (finished || position >= input.size) return null
+        val symbol = input[position]
+        val r = step(state, Label.Symbol(symbol), automaton, strategy, trace, fuel, ruleIndex)
         if (r.nextState == null) {
             finished = true
             result = false
@@ -1739,7 +1797,7 @@ class Recognizer(
      * @return true when the final state is accepting, false otherwise.
      */
     fun runToCompletion(): Boolean {
-        while (position < input.length && !finished) {
+        while (position < input.size && !finished) {
             step()
         }
         if (!finished) {
@@ -1823,10 +1881,12 @@ internal fun resolveIncludes(
 
 /**
  * The top-level entry point: parses a Quiver source, builds the automaton, and
- * recognizes the given input string.
+ * recognizes the given input.
  *
  * @param source the Quiver source code.
- * @param input the input string to recognize.
+ * @param input the input to recognize: the names of the input symbols, in
+ *   order. When it is null, the input the program declares in its header is
+ *   used, and the run fails when the program declares none.
  * @param trace when true, prints a step trace to stderr.
  * @param maxSteps maximum number of steps before throwing
  *   [FuelExhaustedException] (default: 10000).
@@ -1838,10 +1898,12 @@ internal fun resolveIncludes(
  *   matching (state, symbol) is followed in parallel, each on its own automaton
  *   clone, and acceptance is NFA-style (any surviving path accepts).
  * @return true when the input is recognized, false otherwise.
+ * @throws NoInputException when neither the command line nor the program
+ *   declares an input.
  */
 fun runQuiver(
     source: String,
-    input: String,
+    input: List<String>? = null,
     trace: Boolean = false,
     maxSteps: Int = DEFAULT_MAX_STEPS,
     baseDir: String = ".",
@@ -1879,10 +1941,14 @@ fun runQuiver(
     // program that never finishes: it is refused before the run starts.
     checkEpsilonCycles(automaton, activeStrategy.rules)
 
+    // The command line wins over the input the program declares; when neither
+    // gives one, the run has nothing to recognize.
+    val symbols = input ?: fsm?.input ?: throw NoInputException()
+
     return if (nondet) {
-        recognizeNondet(input, automaton, activeStrategy, trace, maxSteps, ruleIndex)
+        recognizeNondet(symbols, automaton, activeStrategy, trace, maxSteps, ruleIndex)
     } else {
-        recognize(input, automaton, activeStrategy, trace, maxSteps, ruleIndex)
+        recognize(symbols, automaton, activeStrategy, trace, maxSteps, ruleIndex)
     }
 }
 
@@ -1909,7 +1975,7 @@ internal fun buildAutomaton(fsm: Decl.Fsm?): Automaton {
         it.mapping.forEach { arrow ->
             val entry = mappingEntry(arrow)
             val value = evalExpr(entry.value, emptyMap(), start, automaton)
-            automaton.addTransition(entry.from, entry.symbol, entry.to, value)
+            automaton.addTransition(entry.from, entry.label, entry.to, value)
         }
     }
     return automaton
@@ -2011,16 +2077,17 @@ private fun mayBeInternalKey(expr: Expr): Boolean = when (expr) {
  * True when an expression in the symbol position may denote the internal
  * symbol.
  *
- * A literal symbol other than the internal one rules the transition out; a
- * variable or a wildcard may be bound to the internal symbol, and so may the
- * result of any other form of expression, which the analysis does not
- * understand.
+ * The reserved word `epsilon` denotes the internal marker; a literal symbol
+ * rules the transition out; a variable or a wildcard may be bound to the
+ * internal marker, and so may the result of any other form of expression,
+ * which the analysis does not understand.
  *
  * @param expr the expression in the symbol position.
  * @return true when the symbol may be the internal one.
  */
 private fun mayBeInternalSymbol(expr: Expr): Boolean = when (expr) {
-    is Expr.Sym -> expr.name == EPSILON_SYMBOL || expr.name.startsWith("$")
+    is Expr.Epsilon -> true
+    is Expr.Sym -> expr.name.startsWith("$")
     is Expr.Wildcard -> true
     is Expr.Bind -> mayBeInternalSymbol(expr.expr)
     else -> true
@@ -2040,7 +2107,7 @@ private fun mayBeInternalSymbol(expr: Expr): Boolean = when (expr) {
 internal fun findEpsilonCycle(automaton: Automaton): List<String>? {
     val reachable = reachableStates(automaton)
     val edges = automaton.transitions
-        .filter { it.symbol == EPSILON_SYMBOL && it.from in reachable && it.to in reachable }
+        .filter { it.label == Label.Internal && it.from in reachable && it.to in reachable }
         .groupBy({ it.from }, { it.to })
     val visited = mutableSetOf<String>()
     val stack = mutableListOf<String>()
@@ -2109,11 +2176,12 @@ private fun findCycleFrom(
  * A transition declared in the `mapping` block of an FSM header.
  *
  * @property from the source state.
- * @property symbol the input symbol the transition reacts to.
+ * @property label the label of the transition: the symbol it reacts to, or
+ *   the internal marker.
  * @property to the target state.
  * @property value the expression whose value labels the transition.
  */
-internal data class MappingEntry(val from: String, val symbol: String, val to: String, val value: Expr)
+internal data class MappingEntry(val from: String, val label: Label, val to: String, val value: Expr)
 
 /**
  * Validates a mapping entry of an FSM header.
@@ -2125,7 +2193,7 @@ internal data class MappingEntry(val from: String, val symbol: String, val to: S
  */
 internal fun mappingEntry(arrow: Expr.Arrow): MappingEntry {
     val parts = mappingParts(arrow) ?: throw invalidMapping()
-    return MappingEntry(parts.from, parts.symbol, parts.to, parts.value)
+    return MappingEntry(parts.from, parts.label, parts.to, parts.value)
 }
 
 /**
@@ -2137,9 +2205,22 @@ private fun mappingParts(arrow: Expr.Arrow): MappingEntry? {
     val fromPair = arrow.left as? Expr.Pair ?: return null
     val toPair = arrow.right as? Expr.Pair ?: return null
     val from = fromPair.left as? Expr.Sym ?: return null
-    val symbol = fromPair.right as? Expr.Sym ?: return null
+    val label = labelOf(fromPair.right) ?: return null
     val to = toPair.left as? Expr.Sym ?: return null
-    return MappingEntry(from.name, symbol.name, to.name, toPair.right)
+    return MappingEntry(from.name, label, to.name, toPair.right)
+}
+
+/**
+ * The label an expression in the symbol position denotes: the internal
+ * marker for the reserved word `epsilon`, and the literal symbol for a name.
+ *
+ * @param expr the expression in the symbol position.
+ * @return the label, or null when the expression is not a symbol.
+ */
+private fun labelOf(expr: Expr): Label? = when (expr) {
+    is Expr.Epsilon -> Label.Internal
+    is Expr.Sym -> Label.Symbol(expr.name)
+    else -> null
 }
 
 /** Builds the error reported for a malformed mapping entry. */

@@ -24,20 +24,20 @@ class QuiverEpsilonTest {
     fun `an internal transition consumes no input`() {
         // The automaton reaches q1 by an internal transition, and reads the
         // only symbol of the input there.
-        assertEquals(true, runQuiver(load("epsilon.quiver"), "a"))
+        assertEquals(true, runQuiver(load("epsilon.quiver"), listOf("a")))
     }
 
     @Test
     fun `the closure runs before the first symbol`() {
         // Without the closure, the automaton would be at q0 when the first
         // symbol arrives, and q0 has no transition on `a`.
-        assertEquals(false, runQuiver(load("epsilon.quiver"), "b"))
+        assertEquals(false, runQuiver(load("epsilon.quiver"), listOf("b")))
     }
 
     @Test
     fun `the closure runs after every symbol`() {
         // The acceptance is decided on q3, which the final closure reaches.
-        assertEquals(true, runQuiver(load("epsilon-closure.quiver"), "a"))
+        assertEquals(true, runQuiver(load("epsilon-closure.quiver"), listOf("a")))
     }
 
     @Test
@@ -46,13 +46,13 @@ class QuiverEpsilonTest {
         // closure leads to q2, which is not accepting: the acceptance is a
         // property of the closed frontier, and not of the state the symbol
         // led to.
-        assertEquals(false, runQuiver(load("epsilon-final.quiver"), "a"))
+        assertEquals(false, runQuiver(load("epsilon-final.quiver"), listOf("a")))
     }
 
     @Test
     fun `an empty input is decided by the closure of the start state`() {
         // The automaton rests on q1, which is not accepting.
-        assertEquals(false, runQuiver(load("epsilon.quiver"), ""))
+        assertEquals(false, runQuiver(load("epsilon.quiver"), emptyList()))
     }
 
     // ---------------------------------------------------------------------
@@ -63,7 +63,7 @@ class QuiverEpsilonTest {
     fun `the rules fire on the internal transitions`() {
         // The program counts four internal steps, and the input is read after
         // them: the run is accepted only if the closure ended.
-        assertEquals(true, runQuiver(load("epsilon-adaptive.quiver"), "a"))
+        assertEquals(true, runQuiver(load("epsilon-adaptive.quiver"), listOf("a")))
     }
 
     @Test
@@ -76,7 +76,7 @@ class QuiverEpsilonTest {
         assertEquals("q0", state)
         assertEquals(4, fuel.taken)
         // The internal transition is gone, and the automaton is ready to read.
-        assertEquals(0, automaton.transitions.count { it.symbol == EPSILON_SYMBOL })
+        assertEquals(0, automaton.transitions.count { it.label == Label.Internal })
     }
 
     // ---------------------------------------------------------------------
@@ -88,7 +88,7 @@ class QuiverEpsilonTest {
         // The run takes one internal step and reads one symbol: two units.
         val ex =
             assertFailsWith<FuelExhaustedException> {
-                runQuiver(load("epsilon.quiver"), "a", maxSteps = 1)
+                runQuiver(load("epsilon.quiver"), listOf("a"), maxSteps = 1)
             }
         assertContains(ex.message ?: "", "after 1 steps")
     }
@@ -97,7 +97,7 @@ class QuiverEpsilonTest {
     fun `the budget of the run covers the internal steps`() {
         val ex =
             assertFailsWith<EpsilonClosureException> {
-                runQuiver(load("epsilon-adaptive.quiver"), "a", maxSteps = 3)
+                runQuiver(load("epsilon-adaptive.quiver"), listOf("a"), maxSteps = 3)
             }
         assertContains(ex.message ?: "", "after 3 internal steps")
     }
@@ -106,7 +106,7 @@ class QuiverEpsilonTest {
     fun `the exhaustion inside a closure is reported as a closure failure`() {
         val ex =
             assertFailsWith<EpsilonClosureException> {
-                runQuiver(load("epsilon-loop.quiver"), "a", maxSteps = 20)
+                runQuiver(load("epsilon-loop.quiver"), listOf("a"), maxSteps = 20)
             }
         val msg = ex.message ?: ""
         assertContains(msg, "Epsilon closure did not terminate")
@@ -118,7 +118,7 @@ class QuiverEpsilonTest {
         // The handlers of the budget treat the closure failure as one.
         val ex =
             assertFailsWith<FuelExhaustedException> {
-                runQuiver(load("epsilon-loop.quiver"), "a", maxSteps = 5)
+                runQuiver(load("epsilon-loop.quiver"), listOf("a"), maxSteps = 5)
             }
         assertTrue(ex is EpsilonClosureException, "Expected an EpsilonClosureException, got: ${ex::class}")
     }
@@ -127,7 +127,7 @@ class QuiverEpsilonTest {
     fun `the non-deterministic closure reports the failure as well`() {
         val ex =
             assertFailsWith<EpsilonClosureException> {
-                runQuiver(load("epsilon-loop.quiver"), "a", maxSteps = 20, nondet = true)
+                runQuiver(load("epsilon-loop.quiver"), listOf("a"), maxSteps = 20, nondet = true)
             }
         val msg = ex.message ?: ""
         assertContains(msg, "Epsilon closure did not terminate")
@@ -155,7 +155,7 @@ class QuiverEpsilonTest {
               _ => (q1, epsilon) -> (${'$'}to, ${'$'}n)
             }
             """.trimIndent()
-        val ex = assertFailsWith<EpsilonClosureException> { runQuiver(source, "a", maxSteps = 5) }
+        val ex = assertFailsWith<EpsilonClosureException> { runQuiver(source, listOf("a"), maxSteps = 5) }
         assertContains(ex.message ?: "", "after 4 internal steps")
     }
 
@@ -165,7 +165,7 @@ class QuiverEpsilonTest {
 
     @Test
     fun `a cycle among the internal transitions is refused`() {
-        val ex = assertFailsWith<QuiverException> { runQuiver(load("epsilon-cycle.quiver"), "a") }
+        val ex = assertFailsWith<QuiverException> { runQuiver(load("epsilon-cycle.quiver"), listOf("a")) }
         val msg = ex.message ?: ""
         assertContains(msg, "Epsilon cycle detected")
         assertContains(msg, "q0 -> q1 -> q0")
@@ -194,14 +194,14 @@ class QuiverEpsilonTest {
 
     @Test
     fun `a cycle in an unreachable part of the automaton is accepted`() {
-        assertEquals(true, runQuiver(load("epsilon-unreachable-cycle.quiver"), "a"))
+        assertEquals(true, runQuiver(load("epsilon-unreachable-cycle.quiver"), listOf("a")))
     }
 
     @Test
     fun `a cycle the rules may break is accepted`() {
         // The rules rewrite the internal transition, so the program decides
         // when the closure ends.
-        assertEquals(true, runQuiver(load("epsilon-adaptive.quiver"), "a"))
+        assertEquals(true, runQuiver(load("epsilon-adaptive.quiver"), listOf("a")))
     }
 
     @Test
@@ -224,7 +224,7 @@ class QuiverEpsilonTest {
               _ => (q0, ${'$'}s) -> (${'$'}to, ${'$'}n)
             }
             """.trimIndent()
-        val ex = assertFailsWith<EpsilonClosureException> { runQuiver(source, "a", maxSteps = 20) }
+        val ex = assertFailsWith<EpsilonClosureException> { runQuiver(source, listOf("a"), maxSteps = 20) }
         assertContains(ex.message ?: "", "Epsilon closure did not terminate")
     }
 
@@ -246,7 +246,7 @@ class QuiverEpsilonTest {
               _ => (q0, _) -> (${'$'}to, ${'$'}n)
             }
             """.trimIndent()
-        val ex = assertFailsWith<EpsilonClosureException> { runQuiver(source, "a", maxSteps = 20) }
+        val ex = assertFailsWith<EpsilonClosureException> { runQuiver(source, listOf("a"), maxSteps = 20) }
         assertContains(ex.message ?: "", "Epsilon closure did not terminate")
     }
 
@@ -270,7 +270,7 @@ class QuiverEpsilonTest {
               (q0, s <- epsilon) -> (${'$'}to, ${'$'}n) => _
             }
             """.trimIndent()
-        val ex = assertFailsWith<QuiverException> { runQuiver(source, "a", maxSteps = 20) }
+        val ex = assertFailsWith<QuiverException> { runQuiver(source, listOf("a"), maxSteps = 20) }
         val msg = ex.message ?: ""
         assertContains(msg, "A binding is only allowed in a pattern")
     }
@@ -294,7 +294,7 @@ class QuiverEpsilonTest {
               _ => (q0, 1) -> (${'$'}to, ${'$'}n)
             }
             """.trimIndent()
-        val ex = assertFailsWith<EpsilonClosureException> { runQuiver(source, "a", maxSteps = 20) }
+        val ex = assertFailsWith<EpsilonClosureException> { runQuiver(source, listOf("a"), maxSteps = 20) }
         assertContains(ex.message ?: "", "Epsilon closure did not terminate")
     }
 
@@ -318,7 +318,7 @@ class QuiverEpsilonTest {
               _ => q0 -> (q0, a)
             }
             """.trimIndent()
-        val ex = assertFailsWith<QuiverException> { runQuiver(source, "a") }
+        val ex = assertFailsWith<QuiverException> { runQuiver(source, listOf("a")) }
         assertContains(ex.message ?: "", "Epsilon cycle detected")
     }
 
@@ -330,12 +330,12 @@ class QuiverEpsilonTest {
     fun `every internal transition is a path of its own`() {
         // The automaton has two internal transitions out of q0: one of them
         // reads the input, and the other dies.
-        assertEquals(true, runQuiver(load("epsilon-nondet.quiver"), "a", nondet = true))
+        assertEquals(true, runQuiver(load("epsilon-nondet.quiver"), listOf("a"), nondet = true))
     }
 
     @Test
     fun `the non-deterministic closure accepts the input it reaches`() {
-        assertEquals(false, runQuiver(load("epsilon-nondet.quiver"), "b", nondet = true))
+        assertEquals(false, runQuiver(load("epsilon-nondet.quiver"), listOf("b"), nondet = true))
     }
 
     // ---------------------------------------------------------------------
@@ -354,9 +354,9 @@ class QuiverEpsilonTest {
     private fun recognizeInternal(automaton: Automaton, strategy: Strategy, fuel: Fuel): String {
         var state = automaton.start
         while (true) {
-            val hasInternal = automaton.transitions.any { it.from == state && it.symbol == EPSILON_SYMBOL }
+            val hasInternal = automaton.transitions.any { it.from == state && it.label == Label.Internal }
             if (!hasInternal) return state
-            val result = step(state, EPSILON_SYMBOL, automaton, strategy, false, fuel)
+            val result = step(state, Label.Internal, automaton, strategy, false, fuel)
             state = result.nextState ?: return state
         }
     }
@@ -369,7 +369,7 @@ class QuiverEpsilonTest {
         fsm.mapping.forEach { arrow ->
             val entry = mappingEntry(arrow)
             val value = evalExpr(entry.value, emptyMap(), fsm.start, automaton)
-            automaton.addTransition(entry.from, entry.symbol, entry.to, value)
+            automaton.addTransition(entry.from, entry.label, entry.to, value)
         }
         return automaton
     }

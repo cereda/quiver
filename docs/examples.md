@@ -35,14 +35,17 @@ test suite exercises them.
 23. [`nondet-repeat.quiver`: non-determinism with the `repeat` strategy](#nondet-repeatquiver-non-determinism-with-the-repeat-strategy)
 24. [`counter-machine.quiver`: the simulation of a counter machine](#counter-machinequiver-the-simulation-of-a-counter-machine)
 25. [`set.quiver`: sets and bulk actions](#setquiver-sets-and-bulk-actions)
+26. [`symbols.quiver`: symbols that are not plain identifiers](#symbolsquiver-symbols-that-are-not-plain-identifiers)
+27. [`input.quiver`: a program that declares its own input](#inputquiver-a-program-that-declares-its-own-input)
+28. [`fresh.quiver`: the generator of fresh states](#freshquiver-the-generator-of-fresh-states)
 
 ## Running an example
 
 Every example is a Quiver source file. The interpreter recognizes one input
-string against it:
+against it, and the input is a sequence of symbols, one per argument:
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/abn.quiver aabb
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/abn.quiver a a b b
 ```
 
 The command prints `true` when the input is recognized and `false` otherwise.
@@ -50,19 +53,24 @@ The `--trace` option prints what happens at every step on the standard error
 stream, which is how the traces below were produced:
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/abn.quiver aabb --trace
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/abn.quiver a a b b --trace
 ```
+
+The tables below write the input as a word, the way the programs name it: the
+word `aabb` is the four symbols `a`, `a`, `b` and `b`, and the command line
+takes them one argument at a time. The word `a` is one symbol, and the empty
+input is the empty command line.
 
 The interactive REPL loads the same files and recognizes as many inputs as you
 like:
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar
+java -jar build/libs/quiver-2.0.0.jar
 ```
 
 ```
 quiver> :load src/main/resources/abn.quiver
-quiver> :recognize aabb
+quiver> :recognize a, a, b, b
 true
 ```
 
@@ -1058,7 +1066,7 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/nondet.quiver a --nondet
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/nondet.quiver a --nondet
 ```
 
 ## `nondet-adaptive.quiver`: per-path adaptive actions
@@ -1123,8 +1131,8 @@ The key point: path q1's retargeting of `(q1,b)` does not affect path q2, and vi
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/nondet-adaptive.quiver ab --nondet
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/nondet-adaptive.quiver ac --nondet
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/nondet-adaptive.quiver a b --nondet
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/nondet-adaptive.quiver a c --nondet
 ```
 
 ## `nondet-strategy.quiver`: non-determinism with the `all` strategy
@@ -1239,8 +1247,8 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/nondet-strategy.quiver a --nondet
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/nondet-repeat.quiver a --nondet
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/nondet-strategy.quiver a --nondet
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/nondet-repeat.quiver a --nondet
 ```
 
 ## `counter-machine.quiver`: the simulation of a counter machine
@@ -1383,7 +1391,7 @@ computation, and it is accepted with the default budget of 10000 steps. A
 budget that is too small does not accept the input, it fails the run:
 
 ```
-$ java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/counter-machine.quiver aaaaaaz --max-steps 8
+$ java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/counter-machine.quiver a a a a a a z --max-steps 8
 error: Epsilon closure did not terminate: the budget was exhausted after 1 internal steps
 ```
 
@@ -1479,5 +1487,139 @@ that set in the value of the `b`-transition.
 Run with:
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/set.quiver ab --trace
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/set.quiver a b --trace
+```
+
+## `symbols.quiver`: symbols that are not plain identifiers
+
+A double-quoted string is a symbol whose name is the text of the string, so a
+symbol may hold spaces, commas and any other character. The bare word
+`epsilon` is the internal transition, and the quoted string `"epsilon"` is the
+ordinary symbol named `epsilon`: the two never collide.
+
+```quiver
+@fsm => {
+  start => q0
+  accepting => $seq [ q3 ]
+  mapping => {
+    (q0, "golf") -> (q1, 0)
+    (q1, epsilon) -> (q2, 0)
+    (q2, "epsilon") -> (q3, 0)
+  }
+}
+```
+
+The program reads three symbols in a row: the symbol named `golf`, the internal
+transition, and the symbol named `epsilon`. The trace shows the three labels as
+they are written:
+
+```
+trace step state=q0 symbol=golf transition=(q0,golf)->(q1,0)
+trace   no rule fired
+trace step state=q1 symbol=epsilon transition=(q1,epsilon)->(q2,0)
+trace   no rule fired
+trace step state=q2 symbol="epsilon" transition=(q2,"epsilon")->(q3,0)
+trace   no rule fired
+true
+```
+
+The second step takes the internal transition, which consumes no symbol: the
+run moves from `q1` to `q2` without reading anything. The third step reads the
+symbol named `epsilon`, and the trace writes it quoted, because the bare word
+is the internal marker.
+
+| Input | Result |
+|---|---|
+| `golf`, `epsilon` | `true` (the internal transition and the symbol named `epsilon` are two different labels) |
+| `golf` | `false` (the internal transition is missing, and the symbol named `epsilon` is not read) |
+
+Run with:
+
+```bash
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/symbols.quiver golf epsilon
+```
+
+## `input.quiver`: a program that declares its own input
+
+The `input` key of the header declares the default input of the run, so that
+the program may be run without naming an input on the command line.
+
+```quiver
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  input => $seq [ a, b ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q1, b) -> (q2, 0)
+  }
+}
+```
+
+The command line overrides the input the program declares, and a program that
+declares no input and gets none from the command line fails:
+
+```bash
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/input.quiver       # true
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/input.quiver x y   # false
+```
+
+The failure of a program without an input is reported without the usage
+summary, since the command line is well formed:
+
+```
+error: the program declares no input; give one on the command line
+```
+
+## `fresh.quiver`: the generator of fresh states
+
+`fresh-state()` mints a state the automaton does not know yet: the names are
+`g0`, `g1`, and so on, and the set of the states only grows.
+
+```quiver
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q1, b) -> (q2, 0)
+  }
+}
+
+(q0, a) -> ($to, $n) => {
+  _ => (q0, a) -> (fresh-state(), $n)
+  each (q0, $sym) -> ($target, $v) => {
+    _ => ($target, b) -> (q2, 0)
+  }
+}
+```
+
+The first clause rewrites the transition out of `q0` on `a` so that it leads to
+a fresh state, and the sweep that follows gives the fresh state a transition of
+its own. The automaton therefore grows one state per symbol, and the run ends
+in the accepting state `q2`.
+
+```
+trace step state=q0 symbol=a transition=(q0,a)->(q1,0)
+trace   insert transition (q0,a)->(g0,0)
+trace   sweep: (q0,$sym) -> ($target,$v) on (q0,a)->(g0,0)
+trace   insert transition (g0,b)->(q2,0)
+trace   rule fired: (q0,a) -> ($to,$n)
+trace step state=g0 symbol=b transition=(g0,b)->(q2,0)
+trace   no rule fired
+true
+```
+
+The sweep sees the transition that was just inserted, so it gives the fresh
+state `g0` a transition on `b`, and the second step of the run takes it.
+
+| Input | Result |
+|---|---|
+| `a`, `b` | `true` (the automaton grew the state `g0` and reached `q2`) |
+| `b`, `a` | `false` (the automaton has no transition out of `q0` on `b`) |
+
+Run with:
+
+```bash
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/fresh.quiver a b --trace
 ```

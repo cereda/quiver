@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test
 import java.io.BufferedReader
 import java.io.StringReader
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -150,7 +152,7 @@ class QuiverReplTest {
     fun `the step command prints the trace`() {
         // The `:step` command runs the recognition with the trace turned on,
         // whatever the state of the `:trace` command.
-        val output = runRepl(":load src/test/resources/simple.quiver\n:step ab\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:step a b\n:quit\n")
         assertContains(output, "true")
     }
 
@@ -172,7 +174,7 @@ class QuiverReplTest {
             runRepl(
                 ":load src/test/resources/index-repl-strategy.quiver\n" +
                     ":strategy first\n" +
-                    "ab\n" +
+                    "a b\n" +
                     ":quit\n",
             )
         assertContains(output, "true")
@@ -213,7 +215,7 @@ class QuiverReplTest {
 
     @Test
     fun `the recognize command prints the result`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\n:recognize ab\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:recognize a b\n:quit\n")
         assertContains(output, "true")
     }
 
@@ -225,19 +227,19 @@ class QuiverReplTest {
 
     @Test
     fun `a plain line is an input to recognize`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\nab\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\na b\n:quit\n")
         assertContains(output, "true")
     }
 
     @Test
     fun `the step command recognizes the input`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\n:step ab\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:step a b\n:quit\n")
         assertContains(output, "true")
     }
 
     @Test
     fun `recognition without a loaded program is reported`() {
-        val output = runRepl(":recognize ab\n:quit\n")
+        val output = runRepl(":recognize a b\n:quit\n")
         assertContains(output, "no automaton/strategy loaded; use :load <file.quiver> first")
     }
 
@@ -263,15 +265,15 @@ class QuiverReplTest {
 
     @Test
     fun `the debug command starts a debug session`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\n:debug ab\n:quit\n")
-        assertContains(output, "debug mode started for input 'ab' (length 2)")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:debug a b\n:quit\n")
+        assertContains(output, "debug mode started for 2 symbol(s)")
         assertContains(output, "state=q0 position=0")
         assertContains(output, "quiver-debug> ")
     }
 
     @Test
     fun `the debug mode steps one symbol at a time`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\n:debug ab\n:step\n:inspect\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:debug a b\n:step\n:inspect\n:quit\n")
         assertContains(output, "step position=1: state=q1")
         assertContains(output, "transition fired: q1")
         assertContains(output, "position: 1 / 2")
@@ -281,28 +283,28 @@ class QuiverReplTest {
 
     @Test
     fun `the debug mode runs to completion`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\n:debug ab\n:continue\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:debug a b\n:continue\n:quit\n")
         assertContains(output, "run to completion: result=true")
         assertContains(output, "quiver> ")
     }
 
     @Test
     fun `the debug mode can be left`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\n:debug ab\n:quit\n:rules\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:debug a b\n:quit\n:rules\n:quit\n")
         assertContains(output, "leaving debug mode")
         assertContains(output, "quiver> ")
     }
 
     @Test
     fun `the debug mode can be left with the exit command`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\n:debug ab\n:exit\n:rules\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:debug a b\n:exit\n:rules\n:quit\n")
         assertContains(output, "leaving debug mode")
         assertContains(output, "quiver> ")
     }
 
     @Test
     fun `the debug mode continues with the short command`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\n:debug ab\n:c\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:debug a b\n:c\n:quit\n")
         assertContains(output, "run to completion: result=true")
     }
 
@@ -316,14 +318,14 @@ class QuiverReplTest {
 
     @Test
     fun `the debug mode has its own help`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\n:debug ab\n:help\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:debug a b\n:help\n:quit\n")
         assertContains(output, ":inspect")
         assertContains(output, ":continue / :c")
     }
 
     @Test
     fun `the debug mode rejects an unknown command`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\n:debug ab\n:nope\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:debug a b\n:nope\n:quit\n")
         assertContains(output, "unknown debug command; type :help for debug commands")
     }
 
@@ -336,14 +338,63 @@ class QuiverReplTest {
 
     @Test
     fun `the debug mode reports the end of the input`() {
-        val output = runRepl(":load src/test/resources/simple.quiver\n:debug ab\n:step\n:step\n:step\n:quit\n")
+        val output = runRepl(":load src/test/resources/simple.quiver\n:debug a b\n:step\n:step\n:step\n:quit\n")
         assertContains(output, "no more input; result=")
     }
 
     @Test
     fun `the debug command without a loaded program is reported`() {
-        val output = runRepl(":debug ab\n:quit\n")
+        val output = runRepl(":debug a b\n:quit\n")
         assertContains(output, "no automaton/strategy loaded; use :load <file.quiver> first")
+    }
+
+    @Test
+    fun `the recognize command uses the input of the program`() {
+        // The command names no input, so the input the program declares is
+        // the one the run recognizes.
+        val output = runRepl(":load src/test/resources/input.quiver\n:recognize\n:quit\n")
+        assertContains(output, "true")
+    }
+
+    @Test
+    fun `the recognize command reports a program that declares no input`() {
+        val output = runRepl(":load src/test/resources/simple.quiver\n:recognize\n:quit\n")
+        assertContains(output, "the program declares no input; give one on the command line")
+    }
+
+    @Test
+    fun `the recognize command reports an input that is not a symbol`() {
+        val output = runRepl(":load src/test/resources/simple.quiver\n:recognize +\n:quit\n")
+        assertContains(output, "error:")
+    }
+
+    @Test
+    fun `the debug command reports an input that is not a symbol`() {
+        val output = runRepl(":load src/test/resources/simple.quiver\n:debug +\n:quit\n")
+        assertContains(output, "error:")
+    }
+
+    @Test
+    fun `the input of a command is tokenized by the lexer`() {
+        // The line is tokenized by the lexer of the language: the commas
+        // separate the symbols, the quoted text is one symbol, and the
+        // comment is not part of the input.
+        assertEquals(listOf("a", "b"), tokenizeInput("a, b"))
+        assertEquals(listOf("a b"), tokenizeInput("\"a b\""))
+        assertEquals(listOf("a", "b"), tokenizeInput("a b # a comment"))
+        assertEquals(listOf("42"), tokenizeInput("42"))
+    }
+
+    @Test
+    fun `the reserved word is not a symbol of the input`() {
+        val error = assertFailsWith<QuiverException> { tokenizeInput("epsilon") }
+        assertContains(error.message ?: "", "epsilon is reserved")
+    }
+
+    @Test
+    fun `an unexpected token is not a symbol of the input`() {
+        val error = assertFailsWith<QuiverException> { tokenizeInput("+") }
+        assertContains(error.message ?: "", "Unexpected token in the input")
     }
 
     @Test

@@ -13,6 +13,60 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 
 ## [Unreleased]
 
+### Added
+
+- The **quoted symbol**: a double-quoted string is a symbol whose name is the
+  text of the string, so a symbol may hold spaces, commas and any other
+  character. A quoted symbol and a bare one denote the same symbol when the
+  text is the same: `"a"` and `a` are one symbol.
+- The **input of the run**, declared by the `input` key of the `@fsm` header:
+  the header holds the default input of the run, a sequence of symbols, and the
+  command line overrides it. A program that declares no input and gets none
+  from the command line fails, with the message `the program declares no
+  input; give one on the command line`.
+- The **generator of fresh states**, `fresh-state()`: it evaluates to the name
+  of a state the automaton does not know yet. The names are `g0`, `g1`, and so
+  on, every evaluation mints a name of its own, and the set of the states only
+  grows. The generator is a value and not a pattern, and using it in a pattern
+  is an error.
+- The example programs `symbols.quiver`, `input.quiver` and `fresh.quiver`,
+  and their walkthroughs in the examples document.
+
+### Changed
+
+- **Breaking change:** the word `epsilon` is reserved. It denotes the internal
+  transition in the symbol position of a transition, and it is an error
+  everywhere else: `epsilon is reserved: it denotes the internal transition;
+  write "epsilon" for the symbol`. The symbol named `epsilon` is now written
+  `"epsilon"`, and it is an ordinary symbol of the alphabet: the internal
+  transition and the symbol named `epsilon` are two different labels, and they
+  never collide. A state may still be named `epsilon`, since a state name is
+  never a symbol.
+- **Breaking change:** the input of a run is a sequence of symbols, and not a
+  string. Every trailing argument of the command line is one symbol of the
+  input, and the name of the symbol is the text of the argument. The empty
+  argument denotes the empty input, and it cannot be combined with other
+  symbols. The `--` argument ends the options, so that an argument that looks
+  like an option may be a symbol.
+- **Breaking change:** the transition of the automaton carries a label, which
+  is either a symbol of the alphabet or the internal marker, and the symbol of
+  a transition is no longer a plain string. The rendering of a label follows
+  the program: the internal marker is written `epsilon`, and a literal symbol
+  is written bare when its name is a plain one and quoted otherwise.
+- The interactive loop tokenizes the input of a command with the lexer of the
+  language: the commas separate the symbols, the quoted text is one symbol, and
+  a `#` starts a comment. The `:recognize` command with no argument recognizes
+  the input the loaded program declares in its `input` key.
+
+### Fixed
+
+- The trace of a bulk removal names the labels of the transitions it removes as
+  the symbols they are, and not as the values that hold them.
+- The generator of fresh states is rejected in every slot of a pattern, and not
+  only when it is the pattern itself: a generator that sits in the symbol slot
+  of a transition-shaped pattern could never match, and it is an error now, as
+  the reference says.
+
 ## [1.3.0] - 2026-11-15
 
 ### Added

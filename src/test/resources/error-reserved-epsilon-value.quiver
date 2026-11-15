@@ -1,0 +1,10 @@
+# The reserved word `epsilon` in the value of a transition: the value is not
+# a symbol slot, and the word may not appear there.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q1, epsilon)
+  }
+}

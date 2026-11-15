@@ -22,6 +22,34 @@ class QuiverParserTest {
     }
 
     @Test
+    fun `a transition shape is a valid pattern`() {
+        // The pattern of a rule may be the shape of a transition: the pair of
+        // the key and the target of the transition.
+        val source =
+            """
+            ((q0, a), (q1, 0)) => {
+              _ => (q0, a) -> (q1, 0)
+            }
+            """.trimIndent()
+        val decls = parseSource(source)
+        assertTrue(decls.isNotEmpty(), "The parser rejected the pattern: $decls")
+    }
+
+    @Test
+    fun `a transition shape is a valid term`() {
+        // The body of a clause may hold the shape of a transition, and not
+        // only an arrow.
+        val source =
+            """
+            (q0, a) -> (${'$'}to, ${'$'}n) => {
+              _ => ((q0, a), (q1, 0))
+            }
+            """.trimIndent()
+        val decls = parseSource(source)
+        assertTrue(decls.isNotEmpty(), "The parser rejected the term: $decls")
+    }
+
+    @Test
     fun `a bare equals sign is a lexical error`() {
         val error = assertFailsWith<QuiverException> { lex("a = b") }
         assertContains(error.message ?: "", "Unexpected character '='")

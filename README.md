@@ -1,7 +1,7 @@
 # Quiver: a term-rewriting language for adaptive automata
 
 A Kotlin/JVM implementation of **Quiver**, a type-safe term-rewriting language
-for adaptive automata. The current release is **1.3.0**.
+for adaptive automata. The current release is **2.0.0**.
 
 An **adaptive automaton** is a finite automaton whose transition function may change
 while it runs. Quiver describes such an automaton as a set of rewrite rules: each rule
@@ -24,7 +24,7 @@ The source lives at <https://github.com/cereda/quiver>. Clone it and build it:
 git clone https://github.com/cereda/quiver.git
 cd quiver
 ./gradlew build                                              # compile, test, lint, document
-./gradlew run --args="-i src/main/resources/rec.quiver aabbcc"  # run the example
+./gradlew run --args="-i src/main/resources/rec.quiver a a b b c c"  # run the example
 ```
 
 Requirements: JDK 17 or later to run the build (Gradle 9.9.1 does not run on
@@ -34,9 +34,9 @@ The build produces a self-contained executable jar (the shadow jar replaces the 
 jar in `build/libs`), so the interpreter runs with no Gradle and no classpath:
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/rec.quiver aabbcc
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/rec.quiver a a b b c c
 # the same jar starts the interactive REPL when it gets no arguments:
-java -jar build/libs/quiver-1.3.0.jar
+java -jar build/libs/quiver-2.0.0.jar
 ```
 
 The command prints `true` when the input is recognized and `false` otherwise; an
@@ -45,30 +45,33 @@ error is reported on the standard error stream and the process exits with status
 ### Command-line interface
 
 ```
-quiver -i <file.quiver> <input-string> [--trace] [--nondet] [--max-steps N]
+quiver -i <file.quiver> [<symbol>...] [--trace] [--nondet] [--max-steps N]
 ```
 
 | Option | Meaning |
 |---|---|
 | `-i <file.quiver>` | the Quiver source file to execute (required) |
-| `<input-string>` | the input to recognize (required) |
+| `<symbol>...` | the symbols of the input, one per argument (optional) |
 | `--trace` | print the step trace on the standard error stream |
 | `--nondet` | non-deterministic recognition (NFA-style, any path accepts) |
 | `--max-steps N` | the fuel budget; 10000 steps by default |
 | `-h`, `--help` | print the usage summary |
 
-The options may appear in any order. The first argument that is none of the
-options above is the input string, and a second one is a usage error.
+The options may appear in any order. Every argument that is none of the options
+above is one symbol of the input, and the name of the symbol is the text of the
+argument. The command line overrides the input the program declares in its
+`input` key, and a program that declares no input and gets none from the command
+line fails.
 
-The `include` directives of the source file are resolved relative to the directory of
-that file.
+The `include` directives of the source file are resolved relative to the directory
+of that file.
 
 The executable jar starts the interactive REPL when it is run without arguments.
 
 ### REPL
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar
+java -jar build/libs/quiver-2.0.0.jar
 ```
 
 While developing, `./gradlew runRepl` starts the same REPL from the sources.
@@ -87,6 +90,11 @@ While developing, `./gradlew runRepl` starts the same REPL from the sources.
 | `:help` / `:quit` | print the summary / leave the REPL |
 
 Any other line is treated as an input to recognize against the loaded automaton.
+The line is tokenized by the lexer of the language: the commas separate the
+symbols, the quoted text is one symbol, and a `#` starts a comment. The
+`:recognize` command with no argument recognizes the input the loaded program
+declares in its `input` key.
+
 The interactive debug mode always follows a single path, so it runs
 deterministically even when the non-deterministic mode is on.
 
@@ -122,12 +130,15 @@ step, with the trace of a concrete input.
 | [`nondet-adaptive.quiver`](src/main/resources/nondet-adaptive.quiver) | per-path adaptive actions |
 | [`nondet-strategy.quiver`](src/main/resources/nondet-strategy.quiver) | non-determinism with the `all` strategy |
 | [`nondet-repeat.quiver`](src/main/resources/nondet-repeat.quiver) | non-determinism with the `repeat` strategy |
+| [`symbols.quiver`](src/main/resources/symbols.quiver) | symbols whose names are not plain identifiers, and the symbol named `epsilon` |
+| [`input.quiver`](src/main/resources/input.quiver) | a program that declares its own input |
+| [`fresh.quiver`](src/main/resources/fresh.quiver) | the generator of fresh states |
 
 Each of them is a complete program:
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/abn.quiver aabb  # true
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/abn.quiver aab   # false
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/abn.quiver a a b b  # true
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/abn.quiver a a b    # false
 ```
 
 This interpreter defines the precise operational semantics, notably the matching
@@ -140,8 +151,11 @@ documents them in the [language reference](docs/language-reference.md).
 * **Rewrite rules:** `pattern [when guard] => { clauses }`
 * **Patterns:** symbols, variables (`$x`), the wildcard (`_`), pairs `(x, a)`,
   arrows `(x, a) -> (x, 1)`, and sequences `$seq [ ... ]`, whose items are atoms
+* **Quoted symbols:** a double-quoted string is a symbol whose name is the text
+  of the string, so `"a b"` is one symbol and not two
 * **Internal transitions:** a transition whose symbol is `epsilon` is taken
-  without consuming an input symbol
+  without consuming an input symbol; the word is reserved, and the symbol named
+  `epsilon` is written `"epsilon"`
 * **Clauses:** `pat => _` removes a transition, `_ => pat` inserts one, and
   `=> { ... }` nests a block of clauses; a clause whose pattern does not match the
   subject is skipped
@@ -164,6 +178,10 @@ documents them in the [language reference](docs/language-reference.md).
 * **Strategies:** `first`, `all` and `repeat [max N]`
 * **Adaptive primitives:** `$state`, `transitions-from(state)`, `clone-automaton()`,
   `emit(expr)`
+* **Generator of fresh states:** `fresh-state()` mints a state the automaton does
+  not know yet, and the set of the states only grows
+* **Input:** the `input` key of the header declares the default input of the
+  run, and the command line overrides it
 * **Inspection primitives:** `targets-from(state)`, `symbols-from(state)`,
   `size(expr)`, `is-empty(expr)`
 * **Modularity:** `include "other-file.quiver"`, resolved relative to the including file
@@ -178,7 +196,7 @@ documents them in the [language reference](docs/language-reference.md).
 ## Build, tests and quality tooling
 
 ```bash
-./gradlew test          # the test suite (481 tests)
+./gradlew test          # the test suite (554 tests)
 ./gradlew detekt        # the static analysis
 ./gradlew spotlessCheck # the formatting and the license headers
 ./gradlew koverVerify   # the coverage floors

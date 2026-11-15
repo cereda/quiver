@@ -14,9 +14,9 @@ import kotlin.system.exitProcess
  * command-line interface.
  *
  * Usage:
- *   quiver -i <file.quiver> <input-string> [--trace] [--nondet] [--max-steps N]
+ *   quiver -i <file.quiver> [<symbol>...] [--trace] [--nondet] [--max-steps N]
  *
- * Prints "true" if the input string is recognized, "false" otherwise.
+ * Prints "true" if the input is recognized, "false" otherwise.
  */
 fun main(args: Array<String>) {
     runEntryPoint(args)
@@ -68,7 +68,7 @@ private fun runProgram(options: Options): Int {
         val result =
             runQuiver(
                 source,
-                options.inputString,
+                options.input,
                 options.trace,
                 options.maxSteps,
                 baseDir,
@@ -78,6 +78,8 @@ private fun runProgram(options: Options): Int {
         println(if (result) "true" else "false")
         0
     } catch (e: QuiverException) {
+        reportError(e)
+    } catch (e: NoInputException) {
         reportError(e)
     } catch (e: FuelExhaustedException) {
         reportError(e)
@@ -89,7 +91,7 @@ private fun runProgram(options: Options): Int {
 /** The parsed command-line options of a Quiver run. */
 private data class Options(
     val inputFile: String,
-    val inputString: String,
+    val input: List<String>?,
     val trace: Boolean,
     val maxSteps: Int,
     val nondet: Boolean,
@@ -143,11 +145,12 @@ private fun parseArgs(args: Array<String>): CliResult {
  */
 private class ParseState {
     var inputFile: String? = null
-    var inputString: String? = null
+    val symbols = mutableListOf<String>()
     var trace = false
     var maxSteps = DEFAULT_MAX_STEPS
     var nondet = false
     var help = false
+    var optionsDone = false
     var error: String? = null
 }
 
@@ -173,17 +176,72 @@ private fun scanArgs(args: Array<String>): CliResult {
 
     val error = state.error
     val inputFile = state.inputFile
-    val inputString = state.inputString
     return when {
         state.help -> CliResult.Help
 
         error != null -> CliResult.UsageError(error)
 
-        inputFile == null || inputString == null ->
-            CliResult.UsageError("both -i <file> and an input string are required")
+        inputFile == null -> CliResult.UsageError("a source file is required (-i <file.quiver>)")
 
-        else -> CliResult.Parsed(
-            Options(inputFile, inputString, state.trace, state.maxSteps, state.nondet),
+        else -> {
+            when (val input = inputOf(state.symbols)) {
+                is CliInput.Invalid -> CliResult.UsageError(input.message)
+
+                is CliInput.None -> CliResult.Parsed(
+                    Options(inputFile, null, state.trace, state.maxSteps, state.nondet),
+                )
+
+                is CliInput.Symbols -> CliResult.Parsed(
+                    Options(inputFile, input.names, state.trace, state.maxSteps, state.nondet),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The outcome of reading the input symbols off the command line.
+ */
+private sealed interface CliInput {
+    /** The command line gives no input at all: the program's own input is used. */
+    data object None : CliInput
+
+    /**
+     * The command line gives the input.
+     *
+     * @property names the names of the input symbols, in order.
+     */
+    data class Symbols(val names: List<String>) : CliInput
+
+    /**
+     * The command line does not name a valid input.
+     *
+     * @property message the message naming the problem.
+     */
+    data class Invalid(val message: String) : CliInput
+}
+
+/**
+ * Reads the input symbols off the command line.
+ *
+ * Every argument that is not an option is one symbol of the input, and the
+ * name of the symbol is the text of the argument. The empty argument is the
+ * exception: it denotes the empty input, and it cannot be combined with
+ * other symbols.
+ *
+ * @param arguments the positional arguments of the command line.
+ * @return the symbols of the input, or the error the arguments name.
+ */
+private fun inputOf(arguments: List<String>): CliInput {
+    if (arguments.isEmpty()) return CliInput.None
+    val empty = arguments.count { it.isEmpty() }
+    return when {
+        empty == 0 -> CliInput.Symbols(arguments)
+
+        empty == 1 && arguments.size == 1 -> CliInput.Symbols(emptyList())
+
+        else -> CliInput.Invalid(
+            "the empty argument denotes the empty input and cannot be combined with other symbols",
         )
     }
 }
@@ -195,24 +253,35 @@ private fun scanArgs(args: Array<String>): CliResult {
  *   the position of the argument's value (already advanced past the option
  *   name when the option takes a value), so the caller advances past it.
  */
-private fun processArg(arg: String, args: Array<String>, i: Int, state: ParseState): Pair<Int, String?> = when (arg) {
-    "-i" -> {
+private fun processArg(arg: String, args: Array<String>, i: Int, state: ParseState): Pair<Int, String?> = when {
+    // Everything after the end-of-options marker is an input symbol.
+    state.optionsDone -> {
+        state.symbols += arg
+        Pair(i, null)
+    }
+
+    arg == "--" -> {
+        state.optionsDone = true
+        Pair(i, null)
+    }
+
+    arg == "-i" -> {
         val next = i + 1
         state.inputFile = if (next < args.size) args[next] else null
         if (state.inputFile == null) Pair(next, "missing argument to -i") else Pair(next, null)
     }
 
-    "--trace" -> {
+    arg == "--trace" -> {
         state.trace = true
         Pair(i, null)
     }
 
-    "--nondet" -> {
+    arg == "--nondet" -> {
         state.nondet = true
         Pair(i, null)
     }
 
-    "--max-steps" -> {
+    arg == "--max-steps" -> {
         val next = i + 1
         val parsed = parseMaxStepsArg(args, next)
         if (parsed == null) {
@@ -231,18 +300,14 @@ private fun processArg(arg: String, args: Array<String>, i: Int, state: ParseSta
         }
     }
 
-    "--help", "-h" -> {
+    arg == "--help" || arg == "-h" -> {
         state.help = true
         Pair(i, null)
     }
 
     else -> {
-        if (state.inputString == null) {
-            state.inputString = arg
-            Pair(i, null)
-        } else {
-            Pair(i, "unexpected argument: $arg")
-        }
+        state.symbols += arg
+        Pair(i, null)
     }
 }
 
@@ -277,15 +342,19 @@ private fun reportError(e: Exception): Int {
 private fun printUsage(out: PrintStream) {
     out.println("Quiver - a term rewriting language for adaptive automata")
     out.println()
-    out.println("Usage: quiver -i <file.quiver> <input-string> [--trace] [--nondet] [--max-steps N]")
+    out.println("Usage: quiver -i <file.quiver> [<symbol>...] [--trace] [--nondet] [--max-steps N]")
     out.println()
     out.println("Options:")
     out.println("  -i <file.quiver>   Quiver source file to execute")
-    out.println("  <input-string>  input string to recognize")
-    out.println("  --trace         print rule-firing trace to stderr")
-    out.println("  --nondet        non-deterministic recognition (NFA-style, any path accepts)")
-    out.println("  --max-steps N   maximum number of steps before aborting (default: 10000)")
-    out.println("  -h, --help      show this help")
+    out.println("  <symbol>...        one symbol of the input per argument")
+    out.println("  --trace            print rule-firing trace to stderr")
+    out.println("  --nondet           non-deterministic recognition (NFA-style, any path accepts)")
+    out.println("  --max-steps N      maximum number of steps before aborting (default: 10000)")
+    out.println("  -h, --help         show this help")
+    out.println()
+    out.println("The symbols of the command line override the input the program declares")
+    out.println("in its header; when neither gives one, the run fails. The empty argument")
+    out.println("denotes the empty input, and `--` ends the options.")
     out.println()
     out.println("Run the interpreter without arguments to start the interactive REPL.")
 }

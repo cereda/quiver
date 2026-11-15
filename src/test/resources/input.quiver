@@ -1,0 +1,21 @@
+# Quiver example: a program that declares its own input.
+#
+# The `input` key of the header declares the default input of the run: the
+# sequence of symbols the program recognizes. The command line overrides it,
+# and a program that declares no input and gets none from the command line
+# fails.
+#
+# The program below recognizes the word `ab`:
+#
+#   quiver -i input.quiver            # the input of the header: a, b
+#   quiver -i input.quiver x y        # the command line wins
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  input => $seq [ a, b ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q1, b) -> (q2, 0)
+  }
+}

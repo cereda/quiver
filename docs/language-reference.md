@@ -23,12 +23,13 @@ semantic choice is described here.
 7. [Recognition](#recognition)
 8. [Strategies](#strategies)
 9. [Adaptive primitives](#adaptive-primitives)
-10. [The inspection primitives](#the-inspection-primitives)
-11. [The sets](#the-sets)
-12. [Errors](#errors)
-13. [The command-line interface](#the-command-line-interface)
-14. [The REPL](#the-repl)
-15. [Appendix: the grammar in one block](#appendix-the-grammar-in-one-block)
+10. [The generator of fresh states](#the-generator-of-fresh-states)
+11. [The inspection primitives](#the-inspection-primitives)
+12. [The sets](#the-sets)
+13. [Errors](#errors)
+14. [The command-line interface](#the-command-line-interface)
+15. [The REPL](#the-repl)
+16. [Appendix: the grammar in one block](#appendix-the-grammar-in-one-block)
 
 The subsections of the two chapters that matter most to the semantics are
 [the epsilon transition](#the-epsilon-transition), [the cycle
@@ -72,7 +73,7 @@ value that it computed earlier, which is what
 Run it with:
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar -i src/main/resources/rec.quiver aabc
+java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/rec.quiver a a b c
 ```
 
 The companion document [the examples](examples.md) walks through every example
@@ -100,6 +101,7 @@ letters, digits, or one of `$ . _ /`. Identifiers are case-sensitive.
 | Form | Meaning |
 |---|---|
 | `q0`, `a`, `true` | a literal symbol (or a keyword, see below) |
+| `"a b"` | a literal symbol whose name is the text of the string |
 | `$x`, `$n` | a **variable** |
 | `%x`, `%syms` | a **set variable** (see [The sets](#the-sets)) |
 | `$seq` | keyword: a sequence literal |
@@ -108,9 +110,15 @@ letters, digits, or one of `$ . _ /`. Identifiers are case-sensitive.
 | `transitions-from`, `targets-from`, `symbols-from`, `clone-automaton` | keywords: the adaptive primitives |
 | `is-empty`, `size` | keywords: the inspection primitives |
 | `set`, `union`, `intersection`, `difference`, `contains` | keywords: the set primitives |
+| `fresh-state` | keyword: the generator of fresh states |
 | `each` | keyword: the sweep clause |
 
 The keywords `fn`, `when`, `true`, `false`, `emit` and `include` are reserved.
+
+The word `epsilon` is reserved as well: it denotes the internal transition in
+the symbol position of a transition, and it is an error everywhere else (see
+[The epsilon transition](#the-epsilon-transition)). A symbol named `epsilon` is
+written `"epsilon"`, and a state may be named `epsilon`.
 
 ### Numbers
 
@@ -127,8 +135,18 @@ and must fit in a machine integer; a larger literal is rejected with an error.
 
 ### Strings
 
-A double-quoted string holds a file path, used by the `include` directive. The
-escapes `\n`, `\t`, `\"` and `\\` are understood.
+A double-quoted string is a **symbol** whose name is the text of the string. The
+name may hold any character, spaces and commas included, and it is matched
+exactly:
+
+```quiver
+(q0, "a b") -> (q1, 0)
+```
+
+The string `"epsilon"` is the ordinary symbol named `epsilon`: the bare word
+`epsilon` is the internal transition, and the two never collide. The escapes
+`\n`, `\t`, `\"` and `\\` are understood, both in a symbol and in the path of an
+`include` directive.
 
 ### Operators and punctuation
 
@@ -159,6 +177,16 @@ clause left-hand sides, and as the values inserted into the automaton.
 A plain identifier denotes a literal **symbol**: `q0`, `a`, `b`. Symbols are
 matched exactly.
 
+A double-quoted string denotes a literal symbol as well, and its name is the
+text of the string: `"a b"` is the symbol whose name is `a b`, and it is a
+different symbol from `a` and from `b`. A quoted symbol and a bare one denote
+the same symbol when the text is the same: `"a"` and `a` are one symbol.
+
+```quiver
+(q0, "a b")   # a literal symbol whose name holds a space
+(q0, a)       # a literal symbol whose name is a
+```
+
 An identifier that starts with `$` denotes a **variable**: `$x`, `$n`. A variable
 matches any term and binds it; a variable that is already bound must match the
 same term again. This is the consistency check of term rewriting, and it keeps the
@@ -172,10 +200,11 @@ $x         # a variable
 _          # the wildcard
 ```
 
-The identifier `epsilon` is an ordinary symbol, with one exception: in the
-symbol position of a transition it denotes the internal transition (see [The
-epsilon transition](#the-epsilon-transition)). Everywhere else it is a symbol
-like any other, and a state may be named `epsilon`.
+The word `epsilon` is reserved: in the symbol position of a transition it
+denotes the internal transition (see [The epsilon
+transition](#the-epsilon-transition)), and everywhere else it is an error. A
+symbol named `epsilon` is written `"epsilon"`, and a state may be named
+`epsilon`, since a state name is never a symbol.
 
 An identifier that starts with `%` denotes a **set variable**: `%x`, `%syms`. A
 set variable matches a set, and, once it is bound, it denotes the elements of
@@ -273,6 +302,7 @@ A program is a sequence of declarations, in any order.
     (q0, b) -> (q1, 0)
   }
   strategy => myStrategy
+  input => $seq [ a, b ]
 }
 ```
 
@@ -282,11 +312,23 @@ A program is a sequence of declarations, in any order.
 | `accepting` | the list of accepting states: `$seq [ q1, q2 ]` or `( q1, q2 )` |
 | `mapping` | the transitions, one arrow per entry |
 | `strategy` | the label of the strategy to activate (optional) |
+| `input` | the default input of the run (optional) |
 
 The `mapping` block is the automaton's transition function. Each entry must be an
 arrow `(state, symbol) -> (state, value)` over symbols; anything else is an error.
 The entries are separated by whitespace. A comma after an entry belongs to the pair
 syntax of the entry's value, not to the block.
+
+The `input` key declares the **input of the run**: the sequence of symbols the
+program recognizes when the command line gives none. It is written as a sequence
+of symbols, `$seq [ a, b ]` or `[ a, b ]`, and a quoted symbol is written as a
+string, as in `$seq [ "a b" ]`. The key belongs to the header, and not to the
+top level of the program, because a top-level `input` would be ambiguous with
+the syntax of a rule.
+
+The command line overrides the input the program declares, and a program that
+declares no input and gets none from the command line fails (see [The
+command-line interface](#the-command-line-interface)).
 
 ### Strategies
 
@@ -332,7 +374,9 @@ itself, directly or indirectly, is a cycle and is reported as an error.
 The automaton is a finite automaton with a *mutable* transition function:
 
 * **states**: a set of names; the initial state, the accepting states and every
-  state named by a transition are all added when the automaton is built;
+  state named by a transition are all added when the automaton is built, and
+  the generator `fresh-state()` adds one more (see [The generator of fresh
+  states](#the-generator-of-fresh-states)); the set only grows;
 * **accepting states**: the set of final states;
 * **transitions**: a list of `(from, symbol) -> (to, value)` entries, in insertion
   order.
@@ -369,11 +413,28 @@ A transition whose symbol is the distinguished symbol `epsilon` is an
 }
 ```
 
-The name `epsilon` is an ordinary identifier, so the grammar is unchanged: it
-has its special meaning only in the symbol position of a transition. A state
-may still be named `epsilon`, since a state name is never a symbol. And the
-input is read one character at a time, so the input can never contain the
-symbol `epsilon` either.
+The name `epsilon` is reserved: the word denotes the internal transition in
+the symbol position of a transition, and it is an error everywhere else:
+
+```
+epsilon is reserved: it denotes the internal transition; write "epsilon" for the symbol
+```
+
+The symbol named `epsilon` is written `"epsilon"`, and it is an ordinary symbol
+of the alphabet: the internal transition and the symbol named `epsilon` are two
+different labels, and they never collide. A state may be named `epsilon`, since
+a state name is never a symbol:
+
+```quiver
+@fsm => {
+  start => epsilon
+  accepting => $seq [ q1 ]
+  mapping => {
+    (epsilon, a) -> (q1, 0)
+    (q1, "epsilon") -> (q2, 0)
+  }
+}
+```
 
 The internal transitions are what makes the language Turing-complete: a chain
 of internal transitions is a computation that no input bounds (see
@@ -688,6 +749,34 @@ Four constructs read the automaton from inside a rule.
 }
 ```
 
+## The generator of fresh states
+
+`fresh-state()` is a **generator**: it evaluates to the name of a state the
+automaton does not know yet.
+
+```quiver
+(q0, a) -> ($x, $n) => {
+  _ => (q0, a) -> (fresh-state(), $n)
+}
+```
+
+The names are `g0`, `g1`, and so on, and the counter never goes back, so every
+name is minted once. The name is reserved as soon as it is minted: it joins the
+set of the states of the automaton, and that set only grows. Every evaluation
+mints a name of its own, so a rule may grow the automaton without bound; the
+fuel budget still bounds the growth.
+
+The generator is a value, and not a pattern: it has no counterpart to match
+against, so using it in the pattern of a rule or of a clause is an error:
+
+```
+fresh-state() is a generator: it mints a new state, so it may not be used as a pattern
+```
+
+The generator is the constructive counterpart of the automaton's *universe of
+states*: a rule that rewrites the transition function may name a state that no
+other rule has named yet, and the automaton grows as the run goes.
+
 ## The inspection primitives
 
 Four constructs inspect a sequence, or the transitions of a state.
@@ -865,8 +954,13 @@ The interpreter reports a Quiver error, never an unchecked exception, for:
 
 * a lexical error (an unexpected character, an unterminated string);
 * a syntax error (a missing token, an unknown FSM key, an unknown strategy kind);
+* the reserved word `epsilon` in a position where it may not appear (see [The
+  epsilon transition](#the-epsilon-transition));
+* the generator `fresh-state()` in a pattern (see [The generator of fresh
+  states](#the-generator-of-fresh-states));
 * a malformed FSM mapping (an entry that is not an arrow, or an arrow whose source
   or target is not a pair of symbols);
+* an input key of the header that is not a list of symbols;
 * an arithmetic operation over a value that is not an integer;
 * an inspection primitive used on a value of the wrong type (`size` and
   `is-empty` over anything but a sequence or a set, and `targets-from` and
@@ -885,16 +979,23 @@ construct; the errors of the run itself do not, because they have no place in
 the source: the cycle guard names the cycle, and the exhausted budget names
 the number of steps taken.
 
+One failure belongs to neither class: a run that has no input to recognize
+fails with its own message, and the usage summary is not printed.
+
+```
+error: the program declares no input; give one on the command line
+```
+
 ## The command-line interface
 
 ```
-quiver -i <file.quiver> <input-string> [--trace] [--nondet] [--max-steps N]
+quiver -i <file.quiver> [<symbol>...] [--trace] [--nondet] [--max-steps N]
 ```
 
 | Option | Meaning |
 |---|---|
 | `-i <file.quiver>` | the Quiver source file to execute (required) |
-| `<input-string>` | the input to recognize (required) |
+| `<symbol>...` | the symbols of the input, one per argument (optional) |
 | `--trace` | print the step trace on the standard error stream |
 | `--nondet` | non-deterministic recognition (NFA-style, any path accepts) |
 | `--max-steps N` | the fuel budget; 10000 by default |
@@ -906,10 +1007,42 @@ process exits with status 1. A usage error, such as a missing argument, a
 malformed option value or an extra argument, is reported on the standard error
 stream, followed by the usage summary, and the process exits with status 1.
 
-The options may appear in any order. The first argument that is none of the
-options above is the input string, and a second one is a usage error. The value
-of `--max-steps` must be an integer; a value that is not one is a usage error.
-A budget of zero or less aborts the run at its first step.
+The options may appear in any order. The value of `--max-steps` must be an
+integer; a value that is not one is a usage error. A budget of zero or less
+aborts the run at its first step.
+
+Every argument that is none of the options above is **one symbol of the input**,
+and the name of the symbol is the text of the argument. The input is therefore a
+sequence of symbols, and not a string:
+
+```bash
+quiver -i rec.quiver a a b b c c
+```
+
+The command line overrides the input the program declares in its `input` key,
+and a program that declares no input and gets none from the command line fails:
+
+```
+error: the program declares no input; give one on the command line
+```
+
+The failure is reported without the usage summary, since the command line is
+well formed: the program simply has nothing to recognize.
+
+The empty argument denotes the **empty input**: the run reads nothing, and the
+closure of the start state decides. It cannot be combined with other symbols,
+and a command line that does so is a usage error:
+
+```
+error: the empty argument denotes the empty input and cannot be combined with other symbols
+```
+
+The `--` argument ends the options: every argument that follows it is a symbol
+of the input, even when it looks like an option.
+
+```bash
+quiver -i rec.quiver -- --trace
+```
 
 The `include` directives of the source file are resolved relative to the directory
 of that file.
@@ -922,7 +1055,7 @@ The interactive read-eval-print loop loads a program and recognizes inputs again
 it:
 
 ```bash
-java -jar build/libs/quiver-1.3.0.jar
+java -jar build/libs/quiver-2.0.0.jar
 ```
 
 | Command | Meaning |
@@ -942,6 +1075,24 @@ java -jar build/libs/quiver-1.3.0.jar
 Any other line is treated as an input to recognize against the loaded automaton.
 The `:strategy` command with no argument prints its usage instead of being taken for
 an input.
+
+The input of a command is a sequence of symbols, and the line is tokenized by
+the **lexer of the language**: the commas separate the symbols, the quoted text
+is one symbol, and a `#` starts a comment. The symbols are the bare names, the
+quoted names and the integers, and the reserved word `epsilon` is an error.
+
+```
+quiver> :recognize a, b
+quiver> :recognize "a b"
+```
+
+The `:recognize` command with no argument recognizes the input the loaded
+program declares in its `input` key, and a program that declares none fails with
+the same message the command line uses:
+
+```
+the program declares no input; give one on the command line
+```
 
 The `:rules` command reports the rules of the active strategy, which are the ones
 the run consults. When the program declares top-level rules that the active
@@ -970,6 +1121,7 @@ fsm-entry      ::= 'start' '=>' symbol
                  | 'accepting' '=>' symbol-list
                  | 'mapping' '=>' '{' arrow* '}'
                  | 'strategy' '=>' symbol
+                 | 'input' '=>' symbol-list
 symbol-list    ::= '$seq' '[' symbol (',' symbol)* ']'
                  | '(' symbol (',' symbol)* ')'
 
@@ -1010,6 +1162,7 @@ term           ::= symbol
                  | 'difference' '(' term ',' term ')'
                  | 'contains' '(' term ',' term ')'
                  | 'clone-automaton' '(' ')'
+                 | 'fresh-state' '(' ')'
                  | integer
 
 atom           ::= symbol
@@ -1019,16 +1172,20 @@ atom           ::= symbol
                  | '(' term ')'
 
 binding        ::= identifier '<-' term
-symbol         ::= identifier | 'true' | 'false'
+symbol         ::= identifier | string | 'true' | 'false'
 variable       ::= '$' identifier
 set-variable   ::= '%' identifier
 identifier     ::= letter (letter | digit | '$' | '.' | '_' | '/')*
                  | ('$' | '@' | '.' | '/' | '%') (letter | digit | '$' | '.' | '_' | '/')*
+string         ::= '"' character* '"'
 ```
 
 Two remarks on the grammar. The arithmetic operators are left-associative, so
 `a + b + c` is `(a + b) + c`, and a term may be followed by a comma, so the
 elements of a pair may be arithmetic expressions, as in `($n + 1, $m)`. And the
-symbol `epsilon` is an ordinary identifier: it has its special meaning only in
-the symbol position of a transition, where it denotes the internal transition
-(see [The epsilon transition](#the-epsilon-transition)).
+word `epsilon` is reserved: it denotes the internal transition in the symbol
+position of a transition, it is an error everywhere else, and the symbol named
+`epsilon` is written `"epsilon"` (see [The epsilon
+transition](#the-epsilon-transition)). The generator `fresh-state()` is a term,
+and not a pattern (see [The generator of fresh
+states](#the-generator-of-fresh-states)).

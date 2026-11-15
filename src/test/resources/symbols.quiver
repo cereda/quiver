@@ -1,0 +1,21 @@
+# Quiver example: symbols whose names are not plain identifiers.
+#
+# A double-quoted string is a symbol: its name is the text of the string, and
+# the name may hold spaces, commas, and any other character. The bare word
+# `epsilon` is the internal transition, and the quoted string "epsilon" is
+# the ordinary symbol named epsilon: the two never collide.
+#
+# The program below reads the two symbols `golf` and `epsilon`, with an
+# internal transition between them:
+#
+#   quiver -i symbols.quiver golf epsilon
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q3 ]
+  mapping => {
+    (q0, "golf") -> (q1, 0)
+    (q1, epsilon) -> (q2, 0)
+    (q2, "epsilon") -> (q3, 0)
+  }
+}

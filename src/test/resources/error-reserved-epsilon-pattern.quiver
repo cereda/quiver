@@ -1,0 +1,14 @@
+# The reserved word `epsilon` as the pattern of a rule: a pattern is matched
+# against the whole subject, and the word may not appear there.
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+  }
+}
+
+epsilon => {
+  _ => (q0, a) -> (q1, 0)
+}

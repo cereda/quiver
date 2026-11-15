@@ -1,0 +1,32 @@
+# Quiver example: the generator of fresh states.
+#
+# `fresh-state()` mints a state the automaton does not know yet: the names
+# are g0, g1, and so on, and the set of states only grows. The primitive is
+# the generator of the theory: it names an element of the universe of states
+# that the program has not used yet.
+#
+# The program below reads the word `ab`. The rule rewrites the transition out
+# of q0 on `a` so that it leads to a fresh state, and the sweep that follows
+# gives the fresh state a transition of its own. The automaton therefore
+# grows one state per symbol, and the run ends in the accepting state q2.
+#
+#   quiver -i fresh.quiver a b
+
+@fsm => {
+  start => q0
+  accepting => $seq [ q2 ]
+  mapping => {
+    (q0, a) -> (q1, 0)
+    (q1, b) -> (q2, 0)
+  }
+}
+
+(q0, a) -> ($to, $n) => {
+  # The fresh state is the target of the rewritten transition.
+  _ => (q0, a) -> (fresh-state(), $n)
+  # The sweep sees the transition that was just inserted, so the fresh
+  # state gets a transition of its own.
+  each (q0, $sym) -> ($target, $v) => {
+    _ => ($target, b) -> (q2, 0)
+  }
+}

@@ -259,7 +259,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         val symbols = automaton.transitions.filter { it.from == "q0" }.map { it.symbol }.toSet()
         assertEquals(setOf("a", "b", "c"), symbols)
     }
@@ -282,7 +282,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         val targets = automaton.transitions.filter { it.symbol == "b" }.map { it.to }.toSet()
         assertEquals(setOf("q1", "q2"), targets)
     }
@@ -305,7 +305,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         val pairs = automaton.transitions.filter { it.symbol != "a" }.map { it.symbol to it.to }.toSet()
         assertEquals(setOf("b" to "q1", "b" to "q2", "c" to "q1", "c" to "q2"), pairs)
     }
@@ -330,7 +330,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "b", automaton, strategy)
+        step("q0", Label.Symbol("b"), automaton, strategy)
         val symbols = automaton.transitions.filter { it.from == "q0" }.map { it.symbol }.toSet()
         assertEquals(setOf("a"), symbols)
     }
@@ -353,7 +353,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -375,7 +375,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -397,7 +397,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         assertEquals(1, automaton.transitions.size)
     }
 
@@ -426,7 +426,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         val value = automaton.transitions.first { it.symbol == "a" }.value
         assertEquals(Value.Set(setOf(Value.Symbol("a"), Value.Symbol("b"), Value.Symbol("c"))), value)
     }
@@ -451,7 +451,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         val value = automaton.transitions.first { it.symbol == "a" }.value
         assertEquals(Value.Set(setOf(Value.Symbol("a"), Value.Symbol("b"))), value)
     }
@@ -475,7 +475,7 @@ class QuiverSetTest {
               }
             }
             """.trimIndent()
-        val output = captureStdout { runQuiver(source, "a") }
+        val output = captureStdout { runQuiver(source, listOf("a")) }
         assertContains(output, "{a}")
         assertContains(output, "{a,b}")
     }
@@ -502,7 +502,7 @@ class QuiverSetTest {
               }
             }
             """.trimIndent()
-        val output = captureStdout { runQuiver(source, "a") }
+        val output = captureStdout { runQuiver(source, listOf("a")) }
         assertContains(output, "{b}")
         assertTrue(!output.contains("{c}"), "Expected no collection of c, got: $output")
     }
@@ -526,7 +526,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         val value = automaton.transitions.first { it.symbol == "a" }.value
         assertEquals(Value.IntVal(1), value)
     }
@@ -537,27 +537,27 @@ class QuiverSetTest {
 
     @Test
     fun `the set example accepts a symbol of the alphabet`() {
-        assertEquals(true, runQuiver(load("set.quiver"), "ab"))
+        assertEquals(true, runQuiver(load("set.quiver"), listOf("a", "b")))
     }
 
     @Test
     fun `the set example accepts every symbol of the alphabet`() {
-        assertEquals(true, runQuiver(load("set.quiver"), "ac"))
+        assertEquals(true, runQuiver(load("set.quiver"), listOf("a", "c")))
     }
 
     @Test
     fun `the set example rejects a symbol outside the alphabet`() {
-        assertEquals(false, runQuiver(load("set.quiver"), "ad"))
+        assertEquals(false, runQuiver(load("set.quiver"), listOf("a", "d")))
     }
 
     @Test
     fun `the set example rejects an input that ends before the alphabet`() {
-        assertEquals(false, runQuiver(load("set.quiver"), "a"))
+        assertEquals(false, runQuiver(load("set.quiver"), listOf("a")))
     }
 
     @Test
     fun `the set example prints the alphabet and the symbols it reads`() {
-        val output = captureStdout { runQuiver(load("set.quiver"), "ab") }
+        val output = captureStdout { runQuiver(load("set.quiver"), listOf("a", "b")) }
         assertContains(output, "{b,c}")
         assertContains(output, "{a,b,c}")
     }
@@ -584,7 +584,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         assertEquals("q0", automaton.transitions.first { it.symbol == "a" }.to)
     }
 
@@ -606,7 +606,7 @@ class QuiverSetTest {
             """.trimIndent()
         val automaton = automatonOf(source)
         val strategy = strategyOf(source)
-        step("q0", "a", automaton, strategy)
+        step("q0", Label.Symbol("a"), automaton, strategy)
         assertEquals("q1", automaton.transitions.first { it.symbol == "a" }.to)
     }
 
@@ -641,7 +641,7 @@ class QuiverSetTest {
         fsm.mapping.forEach { arrow ->
             val entry = mappingEntry(arrow)
             val value = evalExpr(entry.value, emptyMap(), fsm.start, automaton)
-            automaton.addTransition(entry.from, entry.symbol, entry.to, value)
+            automaton.addTransition(entry.from, entry.label, entry.to, value)
         }
         return automaton
     }

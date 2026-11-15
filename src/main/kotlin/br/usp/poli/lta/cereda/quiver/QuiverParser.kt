@@ -123,6 +123,20 @@ sealed class Token {
     /** The `clone-automaton` adaptive primitive token. */
     data class CloneAutomaton(override val line: Int, override val column: Int) : Token()
 
+    /** The `fresh-state` generator token. */
+    data class FreshState(override val line: Int, override val column: Int) : Token()
+
+    /**
+     * The `epsilon` keyword token: the internal marker of a transition.
+     *
+     * The marker is a reserved word: the symbol named `epsilon` is written
+     * as a quoted string, and the two never collide.
+     *
+     * @property line the line where the keyword starts.
+     * @property column the column where the keyword starts.
+     */
+    data class Epsilon(override val line: Int, override val column: Int) : Token()
+
     /**
      * A double-quoted string literal, used by `include` paths.
      *
@@ -198,6 +212,9 @@ private const val IS_EMPTY_KEYWORD = "is-empty"
 /** The `clone-automaton` adaptive primitive, matched before the identifier scan. */
 private const val CLONE_AUTOMATON_KEYWORD = "clone-automaton"
 
+/** The `fresh-state` generator, matched before the identifier scan. */
+private const val FRESH_STATE_KEYWORD = "fresh-state"
+
 /**
  * The hyphenated primitives, matched before the generic identifier scan: the
  * hyphen is not a character an identifier may contain, so these words would
@@ -210,7 +227,11 @@ private val HYPHENATED_KEYWORDS =
         SYMBOLS_FROM_KEYWORD,
         IS_EMPTY_KEYWORD,
         CLONE_AUTOMATON_KEYWORD,
+        FRESH_STATE_KEYWORD,
     )
+
+/** The message reported when the source ends in the middle of a term. */
+private const val UNEXPECTED_END = "Unexpected end of input"
 
 /**
  * The Quiver lexer: turns a source string into a token list, tracking line and
@@ -401,6 +422,7 @@ private class Lexer(private val source: String) {
         tokens +=
             when (text) {
                 "\$state" -> Token.StateRef(tokenLine, tokenColumn)
+                Label.INTERNAL_NAME -> Token.Epsilon(tokenLine, tokenColumn)
                 else -> KEYWORDS[text] ?: Token.Ident(text, tokenLine, tokenColumn)
             }
     }
@@ -411,6 +433,7 @@ private class Lexer(private val source: String) {
         TARGETS_FROM_KEYWORD -> Token.TargetsFrom(tokenLine, tokenColumn)
         SYMBOLS_FROM_KEYWORD -> Token.SymbolsFrom(tokenLine, tokenColumn)
         IS_EMPTY_KEYWORD -> Token.IsEmpty(tokenLine, tokenColumn)
+        FRESH_STATE_KEYWORD -> Token.FreshState(tokenLine, tokenColumn)
         else -> Token.CloneAutomaton(tokenLine, tokenColumn)
     }
 }
@@ -432,16 +455,23 @@ sealed class Decl {
      * The `@fsm => { ... }` header: start state, accepting states, transition
      * mapping, and optional strategy label.
      *
+     * The header declares the automaton and the settings of the run: the
+     * `input` key is the default input of the run, which the command line
+     * overrides.
+     *
      * @property start the initial state name.
      * @property accepting the list of accepting state names.
      * @property mapping the declared transitions, each an [Expr.Arrow].
      * @property strategyLabel the optional strategy to activate, if declared.
+     * @property input the default input of the run, or null when the program
+     *   declares none.
      */
     data class Fsm(
         val start: String,
         val accepting: List<String>,
         val mapping: List<Expr.Arrow>,
         val strategyLabel: String? = null,
+        val input: List<String>? = null,
     ) : Decl()
 
     /**
@@ -500,7 +530,7 @@ class Parser(private val tokens: List<Token>) {
 
     /** Consumes the next token, requiring it to be of the given [kind]. */
     private fun expect(kind: Token): Token {
-        val t = peek() ?: throw QuiverException(currentLine, currentColumn, "Unexpected end of input")
+        val t = peek() ?: throw QuiverException(currentLine, currentColumn, UNEXPECTED_END)
         if (t::class == kind::class) return advance()
         throw QuiverException(t.line, t.column, "Expected ${kind::class.simpleName} but found $t at position $pos")
     }
@@ -589,12 +619,13 @@ class Parser(private val tokens: List<Token>) {
         return Decl.StrategyDecl(Strategy(label, kind, maxIterations, rules))
     }
 
-    /** Parses the FSM body keys: start, accepting, mapping, and strategy. */
+    /** Parses the FSM body keys: start, accepting, mapping, strategy, input. */
     private fun parseFsm(): Decl.Fsm {
         var start: String? = null
         var accepting: List<String> = emptyList()
         val mapping = mutableListOf<Expr.Arrow>()
         var strategyLabel: String? = null
+        var input: List<String>? = null
 
         while (!isToken(Token.RCurly)) {
             val key = (expect(IDENT_PROBE) as Token.Ident).name
@@ -604,11 +635,69 @@ class Parser(private val tokens: List<Token>) {
                 "accepting" -> accepting = parseAccepting()
                 "mapping" -> mapping += parseMapping()
                 "strategy" -> strategyLabel = expectAtom().name
+                "input" -> input = parseInput()
                 else -> throw QuiverException(peekLine(), peekColumn(), "Unknown FSM key '$key'")
             }
             if (isToken(Token.Semicolon) || isToken(Token.Comma)) advance()
         }
-        return Decl.Fsm(start ?: throw QuiverException(0, 0, "FSM missing 'start'"), accepting, mapping, strategyLabel)
+        return Decl.Fsm(
+            start ?: throw QuiverException(0, 0, "FSM missing 'start'"),
+            accepting,
+            mapping,
+            strategyLabel,
+            input,
+        )
+    }
+
+    /**
+     * Parses the `input` key: the default input of the run, a sequence of
+     * symbols.
+     *
+     * The sequence is written `$seq [ ... ]` or `[ ... ]`, and every item is
+     * one symbol: a bare identifier, or a quoted string when the name of the
+     * symbol is not a plain one.
+     */
+    private fun parseInput(): List<String> {
+        if (isToken(Token.DollarSeq)) advance() // $seq
+        expect(Token.LBracket) // [
+        val result = mutableListOf<String>()
+        while (!isToken(Token.RBracket)) {
+            result += parseInputSymbol()
+            if (isToken(Token.Comma)) advance()
+        }
+        expect(Token.RBracket) // ]
+        return result
+    }
+
+    /** Parses one symbol of the `input` key. */
+    private fun parseInputSymbol(): String {
+        val t = peek() ?: throw QuiverException(currentLine, currentColumn, UNEXPECTED_END)
+        return when (t) {
+            is Token.Ident -> {
+                advance()
+                t.name
+            }
+
+            is Token.StringLit -> {
+                advance()
+                t.text
+            }
+
+            else -> inputSymbolError(t)
+        }
+    }
+
+    /**
+     * Builds the error reported when the input of the program holds a term
+     * that is not a symbol.
+     *
+     * @param t the offending token.
+     * @return nothing: the function always fails.
+     */
+    private fun inputSymbolError(t: Token): Nothing = if (t is Token.Epsilon) {
+        throw QuiverException(t.line, t.column, RESERVED_EPSILON)
+    } else {
+        throw QuiverException(t.line, t.column, "The input must be a list of symbols")
     }
 
     /**
@@ -837,6 +926,18 @@ class Parser(private val tokens: List<Token>) {
 
         is Token.CloneAutomaton -> parseCloneAutomaton()
 
+        is Token.FreshState -> parseFreshState()
+
+        is Token.Epsilon -> {
+            advance() // epsilon
+            Expr.Epsilon
+        }
+
+        is Token.StringLit -> {
+            advance() // "..."
+            Expr.Sym(t.text)
+        }
+
         is Token.Emit -> parseEmit()
 
         is Token.Lparen -> parseGroup()
@@ -877,7 +978,7 @@ class Parser(private val tokens: List<Token>) {
 
         is Token.Ident -> parseIdent(t)
 
-        null -> throw QuiverException(currentLine, currentColumn, "Unexpected end of input")
+        null -> throw QuiverException(currentLine, currentColumn, UNEXPECTED_END)
 
         else -> throw QuiverException(t.line, t.column, "Unexpected token $t")
     }
@@ -1010,6 +1111,14 @@ class Parser(private val tokens: List<Token>) {
         return Expr.CloneAutomaton
     }
 
+    /** Parses `fresh-state()`, consuming the keyword. */
+    private fun parseFreshState(): Expr {
+        advance() // fresh-state
+        expect(Token.Lparen) // (
+        expect(Token.Rparen) // )
+        return Expr.FreshState
+    }
+
     /** Parses `emit(expr)`, consuming the keyword. */
     private fun parseEmit(): Expr {
         advance() // emit
@@ -1087,12 +1196,264 @@ class Parser(private val tokens: List<Token>) {
         return Expr.Sym(name)
     }
 
-    /** Consumes an identifier token and wraps it as an [Expr.Sym]. */
+    /**
+     * Consumes an identifier token and wraps it as an [Expr.Sym].
+     *
+     * The reserved word `epsilon` is accepted here: the atom is a name, and
+     * a state may be named `epsilon`. The walk over the parsed program
+     * rejects the word where it may not appear.
+     */
     private fun expectAtom(): Expr.Sym {
-        val t = expect(IDENT_PROBE)
-        return Expr.Sym((t as Token.Ident).name)
+        val t = peek()
+        if (t is Token.Epsilon) {
+            advance()
+            return Expr.Sym(Label.INTERNAL_NAME)
+        }
+        val token = expect(IDENT_PROBE)
+        return Expr.Sym((token as Token.Ident).name)
     }
 }
 
 /** Convenience entry point: lexes and parses [source] into a list of [Decl]. */
-fun parseSource(source: String): List<Decl> = Parser(lex(source)).parseDecls()
+fun parseSource(source: String): List<Decl> = Parser(lex(source)).parseDecls().let(::checkProgram)
+
+/**
+ * The message reported when the reserved word `epsilon` appears where it may
+ * not.
+ */
+private const val RESERVED_EPSILON =
+    "epsilon is reserved: it denotes the internal transition; write \"epsilon\" for the symbol"
+
+/**
+ * The message reported when the generator `fresh-state()` appears where it may
+ * not.
+ */
+private const val RESERVED_FRESH_STATE =
+    "fresh-state() is a generator: it mints a new state, so it may not be used as a pattern"
+
+/**
+ * The role a term plays in a program, which decides what the reserved word
+ * `epsilon` may denote there.
+ *
+ * The marker is legal in the symbol slot of a transition, and nowhere else;
+ * a state may be named `epsilon`, since a state name is never a symbol.
+ */
+private enum class Role {
+    /** The state name of a transition. */
+    STATE,
+
+    /** The symbol of a transition: the slot where the internal marker lives. */
+    SYMBOL,
+
+    /** The value of a transition. */
+    VALUE,
+
+    /** The key of a transition: the pair `(state, symbol)`. */
+    KEY,
+
+    /** The target of a transition: the pair `(state, value)`. */
+    TARGET,
+
+    /** A pattern: the shape of a rule or of a clause. */
+    PATTERN,
+
+    /** Any other term. */
+    TERM,
+}
+
+/**
+ * Walks over the declarations of a program, checking the terms whose meaning
+ * is restricted, and rewriting the places where the reserved word denotes a
+ * state.
+ *
+ * Two terms have a restricted meaning: the reserved word `epsilon`, which
+ * denotes the internal marker or a state, and the generator `fresh-state()`,
+ * which mints a new state and is therefore no pattern.
+ *
+ * @param decls the declarations of the program.
+ * @return the declarations, with the state names normalized.
+ * @throws QuiverException when a restricted term appears where it may not.
+ */
+private fun checkProgram(decls: List<Decl>): List<Decl> = decls.map { decl ->
+    when (decl) {
+        is Decl.Fsm -> decl.copy(mapping = decl.mapping.map { walkTerms(it, Role.TERM) as Expr.Arrow })
+
+        is Decl.RuleDecl -> decl.copy(rule = walkRuleTerms(decl.rule))
+
+        is Decl.StrategyDecl ->
+            decl.copy(strategy = decl.strategy.copy(rules = decl.strategy.rules.map(::walkRuleTerms)))
+
+        is Decl.IncludeDecl -> decl
+    }
+}
+
+/**
+ * Walks over the terms of a rule, checking the restricted terms.
+ *
+ * @param rule the rule to walk over.
+ * @return the rule, with the state names normalized.
+ */
+private fun walkRuleTerms(rule: Rule): Rule = rule.copy(
+    pattern = walkTerms(rule.pattern, Role.PATTERN, inPattern = true),
+    guard = rule.guard?.let { walkTerms(it, Role.TERM) },
+    clauses = rule.clauses.map(::walkClauseTerms),
+)
+
+/**
+ * Walks over the terms of a clause, checking the restricted terms.
+ *
+ * @param clause the clause to walk over.
+ * @return the clause, with the state names normalized.
+ */
+private fun walkClauseTerms(clause: Clause): Clause = clause.copy(
+    left = walkTerms(clause.left, Role.PATTERN, inPattern = true),
+    right = walkClauseRightTerms(clause.right),
+)
+
+/**
+ * Walks over the right-hand side of a clause, checking the restricted terms.
+ *
+ * @param right the right-hand side to walk over.
+ * @return the right-hand side, with the state names normalized.
+ */
+private fun walkClauseRightTerms(right: ClauseRight): ClauseRight = when (right) {
+    is ClauseRight.Rhs -> ClauseRight.Rhs(walkTerms(right.expr, Role.TERM))
+    is ClauseRight.Block -> ClauseRight.Block(right.clauses.map(::walkClauseTerms))
+    is ClauseRight.Sweep -> ClauseRight.Sweep(right.clauses.map(::walkClauseTerms))
+    ClauseRight.Wildcard -> right
+}
+
+/**
+ * The role the children of a term inherit from the role of the term itself.
+ *
+ * @param role the role of the term.
+ * @return the role of its children.
+ */
+private fun childRole(role: Role): Role = if (role == Role.VALUE) Role.VALUE else Role.TERM
+
+/**
+ * Walks over a term, checking the terms whose meaning is restricted.
+ *
+ * An arrow is a transition, and its sides are the key and the target of that
+ * transition: the key is the pair `(state, symbol)`, and the target is the
+ * pair `(state, value)`. The reserved word denotes the internal marker in the
+ * symbol slot, a state named `epsilon` in the state slot, and it is an error
+ * everywhere else. The generator mints a new state, so it is an error anywhere
+ * in a pattern: the flag keeps the context of the pattern alive through the
+ * shapes a pattern may take, and the shapes that are evaluated rather than
+ * matched, such as an arithmetic term or the body of a function, drop it.
+ *
+ * @param expr the term to walk over.
+ * @param role the role the term plays.
+ * @param inPattern whether the term is matched, that is, whether it sits in
+ * the pattern of a rule or of a clause.
+ * @return the term, with the state names normalized.
+ * @throws QuiverException when a restricted term appears where it may not.
+ */
+private fun walkTerms(expr: Expr, role: Role, inPattern: Boolean = false): Expr = when (expr) {
+    is Expr.Epsilon ->
+        when (role) {
+            Role.STATE -> Expr.Sym(Label.INTERNAL_NAME)
+            Role.SYMBOL -> expr
+            else -> throw QuiverException(0, 0, RESERVED_EPSILON)
+        }
+
+    is Expr.FreshState ->
+        if (role == Role.PATTERN || inPattern) {
+            throw QuiverException(0, 0, RESERVED_FRESH_STATE)
+        } else {
+            expr
+        }
+
+    is Expr.Pair -> walkPairTerms(expr, role, inPattern)
+
+    is Expr.Arrow -> Expr.Arrow(
+        walkTerms(expr.left, Role.KEY, inPattern),
+        walkTerms(expr.right, Role.TARGET, inPattern),
+    )
+
+    is Expr.Bind -> Expr.Bind(expr.varName, walkTerms(expr.expr, role, inPattern))
+
+    is Expr.Seq -> Expr.Seq(expr.items.map { walkTerms(it, childRole(role), inPattern) })
+
+    is Expr.Plus -> Expr.Plus(
+        walkTerms(expr.left, childRole(role)),
+        walkTerms(expr.right, childRole(role)),
+    )
+
+    is Expr.Minus -> Expr.Minus(
+        walkTerms(expr.left, childRole(role)),
+        walkTerms(expr.right, childRole(role)),
+    )
+
+    is Expr.App -> Expr.App(
+        walkTerms(expr.fn, childRole(role)),
+        walkTerms(expr.arg, childRole(role)),
+    )
+
+    is Expr.Emit -> Expr.Emit(walkTerms(expr.expr, childRole(role)))
+
+    is Expr.Fun -> Expr.Fun(expr.params, walkTerms(expr.body, Role.VALUE))
+
+    else -> expr
+}
+
+/**
+ * Walks over a pair, checking the terms whose meaning is restricted.
+ *
+ * The pair of pairs is the shape of a transition, and a pair in a pattern is
+ * the key of a transition: the walk reads the shape the term has in the
+ * place it occupies.
+ *
+ * @param expr the pair to walk over.
+ * @param role the role the pair plays.
+ * @param inPattern whether the pair is matched, that is, whether it sits in
+ * the pattern of a rule or of a clause.
+ * @return the pair, with the state names normalized.
+ * @throws QuiverException when a restricted term appears where it may not.
+ */
+private fun walkPairTerms(expr: Expr.Pair, role: Role, inPattern: Boolean): Expr = when (role) {
+    Role.KEY -> Expr.Pair(
+        walkTerms(expr.left, Role.STATE, inPattern),
+        walkTerms(expr.right, Role.SYMBOL, inPattern),
+    )
+
+    Role.TARGET -> Expr.Pair(
+        walkTerms(expr.left, Role.STATE, inPattern),
+        walkTerms(expr.right, Role.VALUE, inPattern),
+    )
+
+    Role.VALUE -> Expr.Pair(
+        walkTerms(expr.left, Role.VALUE),
+        walkTerms(expr.right, Role.VALUE),
+    )
+
+    Role.PATTERN ->
+        if (expr.left is Expr.Pair && expr.right is Expr.Pair) {
+            // The pair of pairs is the shape of a transition.
+            Expr.Pair(
+                walkTerms(expr.left, Role.KEY, true),
+                walkTerms(expr.right, Role.TARGET, true),
+            )
+        } else {
+            // A key of a transition: `(state, symbol)`.
+            Expr.Pair(
+                walkTerms(expr.left, Role.STATE, true),
+                walkTerms(expr.right, Role.SYMBOL, true),
+            )
+        }
+
+    else ->
+        if (expr.left is Expr.Pair && expr.right is Expr.Pair) {
+            // The pair of pairs is the shape of a transition.
+            Expr.Pair(
+                walkTerms(expr.left, Role.KEY, inPattern),
+                walkTerms(expr.right, Role.TARGET, inPattern),
+            )
+        } else {
+            Expr.Pair(
+                walkTerms(expr.left, childRole(role), inPattern),
+                walkTerms(expr.right, childRole(role), inPattern),
+            )
+        }
+}
