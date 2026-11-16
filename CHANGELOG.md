@@ -13,6 +13,8 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-16
+
 ### Added
 
 - The **`inspect` command**, which summarizes a program without running it: it
@@ -290,7 +292,8 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 - The example programs and the documentation: the normative language
   reference and the step-by-step walkthrough of every example.
 
-[Unreleased]: https://github.com/cereda/quiver/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/cereda/quiver/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/cereda/quiver/tree/v3.0.0
 [2.0.0]: https://github.com/cereda/quiver/tree/v2.0.0
 [1.3.0]: https://github.com/cereda/quiver/tree/v1.3.0
 [1.2.0]: https://github.com/cereda/quiver/tree/v1.2.0
