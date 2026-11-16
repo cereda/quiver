@@ -173,7 +173,7 @@ class QuiverEpsilonTest {
 
     @Test
     fun `a cycle among the internal transitions is refused by the repl`() {
-        val output = runReplScript(":load src/test/resources/epsilon-cycle.quiver\n:quit\n")
+        val output = runRepl(":load src/test/resources/epsilon-cycle.quiver\n:quit\n")
         assertContains(output, "error loading src/test/resources/epsilon-cycle.quiver:")
         assertContains(output, "Epsilon cycle detected")
     }
@@ -182,7 +182,7 @@ class QuiverEpsilonTest {
     fun `a cycle among the internal transitions keeps the previous session`() {
         // The session that was working before the failed load must survive it.
         val output =
-            runReplScript(
+            runRepl(
                 ":load src/test/resources/epsilon.quiver\n" +
                     ":load src/test/resources/epsilon-cycle.quiver\n" +
                     ":recognize a\n" +
@@ -382,9 +382,4 @@ class QuiverEpsilonTest {
 
     /** Loads a resource of the test suite. */
     private fun load(name: String): String = loadResource(name)
-
-    /** Drives the REPL with a script and returns everything it printed. */
-    private fun runReplScript(script: String): String = captureStdout {
-        QuiverRepl(java.io.BufferedReader(java.io.StringReader(script))).run()
-    }
 }

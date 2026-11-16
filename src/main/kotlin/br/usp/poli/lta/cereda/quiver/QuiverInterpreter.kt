@@ -1910,45 +1910,24 @@ fun runQuiver(
     sourcePath: String? = null,
     nondet: Boolean = false,
 ): Boolean {
-    val decls = parseSource(source)
-    // The source file itself is part of the include chain: a file that
-    // includes the source it came from is a cycle.
-    val included = mutableSetOf<String>()
-    val chain = mutableSetOf<String>()
-    sourcePath?.let {
-        val path = canonicalPath(File(it))
-        included.add(path)
-        chain.add(path)
-    }
-    val resolvedDecls = resolveIncludes(decls, baseDir, included, chain)
-    val fsm = resolvedDecls.filterIsInstance<Decl.Fsm>().firstOrNull()
-    val rules = resolvedDecls.filterIsInstance<Decl.RuleDecl>().map { it.rule }
-    val strategies = resolvedDecls.filterIsInstance<Decl.StrategyDecl>().associateBy { it.strategy.label }
-
-    // Select the active strategy: the one named in the FSM header, otherwise a
-    // default FIRST strategy over all top-level rules.
-    val activeStrategy: Strategy = fsm?.strategyLabel?.let { strategies[it]?.strategy }
-        ?: Strategy("default", StrategyKind.FIRST, DEFAULT_MAX_ITERATIONS, rules)
+    // The body of the program is built once, and every surface of the tool
+    // builds it the same way, so the command line, the interactive session
+    // and the inspection cannot disagree about the program they run.
+    val body = loadBody(source, baseDir, sourcePath)
 
     // The rule index covers the rules of the active strategy: a program that
     // selects a named strategy runs that strategy's rules, and not the
     // top-level ones.
-    val ruleIndex = buildRuleIndex(activeStrategy.rules)
-
-    val automaton = buildAutomaton(fsm)
-
-    // A cycle among the internal transitions that the rules cannot break is a
-    // program that never finishes: it is refused before the run starts.
-    checkEpsilonCycles(automaton, activeStrategy.rules)
+    val ruleIndex = buildRuleIndex(body.activeStrategy.rules)
 
     // The command line wins over the input the program declares; when neither
     // gives one, the run has nothing to recognize.
-    val symbols = input ?: fsm?.input ?: throw NoInputException()
+    val symbols = input ?: body.fsm?.input ?: throw NoInputException()
 
     return if (nondet) {
-        recognizeNondet(symbols, automaton, activeStrategy, trace, maxSteps, ruleIndex)
+        recognizeNondet(symbols, body.automaton, body.activeStrategy, trace, maxSteps, ruleIndex)
     } else {
-        recognize(symbols, automaton, activeStrategy, trace, maxSteps, ruleIndex)
+        recognize(symbols, body.automaton, body.activeStrategy, trace, maxSteps, ruleIndex)
     }
 }
 

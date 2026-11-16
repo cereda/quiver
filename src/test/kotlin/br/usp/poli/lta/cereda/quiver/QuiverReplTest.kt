@@ -1,9 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package br.usp.poli.lta.cereda.quiver
 
+import org.jline.reader.EndOfFileException
+import org.jline.reader.UserInterruptException
+import org.jline.terminal.impl.DumbTerminal
 import org.junit.jupiter.api.Test
-import java.io.BufferedReader
-import java.io.StringReader
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -12,8 +17,8 @@ import kotlin.test.assertTrue
 /**
  * The tests of the interactive REPL.
  *
- * The REPL reads its commands from a reader, so a script drives it exactly as
- * a user would; the output is captured from the standard output.
+ * The REPL reads its commands from the terminal, so a script drives it
+ * exactly as a user would; the output is captured from the standard output.
  */
 class QuiverReplTest {
 
@@ -32,6 +37,21 @@ class QuiverReplTest {
         assertContains(output, ":strategy <kind>")
         assertContains(output, ":debug <input>")
         assertContains(output, "Any other line (outside debug mode) is treated as input")
+    }
+
+    @Test
+    fun `the help command lists the aliases of the commands`() {
+        // The help names every name a command answers to, so that a name
+        // the session accepts is a name the user can read about.
+        val output = runRepl(":help\n:quit\n")
+        assertContains(output, ":quit / :exit")
+    }
+
+    @Test
+    fun `the debug help lists the aliases of the commands`() {
+        val output = runRepl(":load src/test/resources/simple.quiver\n:debug a\n:help\n:quit\n")
+        assertContains(output, ":quit / :exit")
+        assertContains(output, ":continue / :c")
     }
 
     @Test
@@ -202,6 +222,77 @@ class QuiverReplTest {
     }
 
     @Test
+    fun `an empty line prints nothing`() {
+        // The user presses Enter and nothing happens: the empty line is no
+        // command and no input.
+        val output = runRepl("\n:quit\n")
+        assertContains(output, "goodbye")
+        assertTrue(!output.contains("unknown command"), "The empty line was reported")
+    }
+
+    @Test
+    fun `the strategy command accepts a kind`() {
+        val output = runRepl(":strategy first\n:quit\n")
+        assertContains(output, "strategy set to FIRST (maxIterations=100)")
+    }
+
+    @Test
+    fun `the strategy command accepts a bound`() {
+        val output = runRepl(":strategy repeat max 5\n:quit\n")
+        assertContains(output, "strategy set to REPEAT (maxIterations=5)")
+    }
+
+    @Test
+    fun `the strategy command falls back to the default bound`() {
+        // A bound that is not a number is not a bound, and the default one
+        // is used instead.
+        val output = runRepl(":strategy repeat max abc\n:quit\n")
+        assertContains(output, "strategy set to REPEAT (maxIterations=100)")
+    }
+
+    @Test
+    fun `the strategy command ignores a number that is not a bound`() {
+        // The bound is the word `max` followed by a number, and a number
+        // alone is not a bound.
+        val output = runRepl(":strategy repeat 5\n:quit\n")
+        assertContains(output, "strategy set to REPEAT (maxIterations=100)")
+    }
+
+    @Test
+    fun `the strategy command ignores a bound that is not a bound`() {
+        // The word `max` is what makes the second word a bound, and a word
+        // that is not `max` is not a bound.
+        val output = runRepl(":strategy repeat foo 5\n:quit\n")
+        assertContains(output, "strategy set to REPEAT (maxIterations=100)")
+    }
+
+    @Test
+    fun `the strategy command works in an empty session`() {
+        // The session that holds no program has no rules to run, and the
+        // command says which strategy it selected anyway.
+        val output = runRepl(":strategy first\n:quit\n")
+        assertContains(output, "strategy set to FIRST")
+    }
+
+    @Test
+    fun `the rules report shows the strategy the user selected`() {
+        // The strategy the user selects fires the top-level rules of the
+        // program, and the report says so.
+        val output = runRepl(":load src/test/resources/abn.quiver\n:strategy first\n:rules\n:quit\n")
+        assertContains(output, "Loaded rules (5):")
+        assertContains(output, "Active strategy: FIRST (5 rules)")
+    }
+
+    @Test
+    fun `the debug session runs the strategy the user selected`() {
+        val output =
+            runRepl(
+                ":load src/test/resources/abn.quiver\n:strategy first\n:debug a a\n:quit\n",
+            )
+        assertContains(output, "debug mode started for 2 symbol(s)")
+    }
+
+    @Test
     fun `the strategy command rejects an empty specification`() {
         val output = runRepl(":strategy\n:quit\n")
         assertContains(output, "usage: :strategy <first|all|repeat [max N]>")
@@ -261,6 +352,12 @@ class QuiverReplTest {
     fun `the exit command ends the session`() {
         val output = runRepl(":exit\n")
         assertContains(output, "goodbye")
+    }
+
+    @Test
+    fun `an unknown command is reported`() {
+        val output = runRepl(":nope\n:quit\n")
+        assertContains(output, "unknown command: :nope")
     }
 
     @Test
@@ -398,48 +495,390 @@ class QuiverReplTest {
     }
 
     @Test
-    fun `the repl entry point loads the file named in the arguments`() {
-        val output =
-            captureStdout {
-                withStandardInput(":quit\n") {
-                    invokeReplMain(arrayOf("src/test/resources/simple.quiver"))
-                }
-            }
-        assertContains(output, "Loaded src/test/resources/simple.quiver")
+    fun `the session loads the file named in the arguments`() {
+        val run = cliRepl(":quit\n", "--load", "src/test/resources/simple.quiver")
+        assertContains(run.stdout, "Loaded src/test/resources/simple.quiver")
+        assertContains(run.stdout, "goodbye")
+    }
+
+    @Test
+    fun `the session without arguments opens an empty session`() {
+        val run = cliRepl(":rules\n:quit\n")
+        assertContains(run.stdout, "(no rules loaded)")
+    }
+
+    @Test
+    fun `the history of the session is kept in the state directory`() {
+        assertEquals("/state/quiver/repl-history", historyFilePath("/state", "/home/user"))
+        assertEquals("/home/user/.local/state/quiver/repl-history", historyFilePath(null, "/home/user"))
+        assertEquals("/home/user/.local/state/quiver/repl-history", historyFilePath("  ", "/home/user"))
+        assertEquals(null, historyFilePath(null, null))
+        assertEquals(null, historyFilePath(null, "  "))
+    }
+
+    @Test
+    fun `a state root that is not absolute is ignored`() {
+        // The specification of the XDG says that a root that is not an
+        // absolute path is ignored, and the home takes its place.
+        assertEquals("/home/user/.local/state/quiver/repl-history", historyFilePath("state", "/home/user"))
+        assertEquals("/home/user/.local/state/quiver/repl-history", historyFilePath("state/../state", "/home/user"))
+    }
+
+    @Test
+    fun `the session of a pipe is not painted`() {
+        // The colours are the privilege of a terminal: the transcript of a
+        // session that is piped is the transcript of the article, byte for
+        // byte.
+        val output = runRepl(":quit\n")
+        assertTrue(!output.contains("\u001b["), "The session was painted")
+    }
+
+    @Test
+    fun `the colour option paints the session of a pipe`() {
+        val run = cliRepl(":quit\n", "--color")
+        assertContains(run.stdout, "\u001b[2m")
+        assertContains(run.stdout, "\u001b[36m")
+    }
+
+    @Test
+    fun `the no colour option paints nothing`() {
+        val run = cliRepl(":quit\n", "--no-color")
+        assertTrue(!run.stdout.contains("\u001b["), "The session was painted")
+    }
+
+    @Test
+    fun `the colour options contradict each other`() {
+        val run = cliRepl(":quit\n", "--color", "--no-color")
+        assertEquals(1, run.status)
+        assertContains(run.stderr, "--color and --no-color cannot be used together")
+        // The usage summary names the command that was misused, and not the
+        // command that started the run.
+        assertContains(run.stderr, "Usage: quiver repl")
+    }
+
+    @Test
+    fun `the no banner option opens the session with no banner`() {
+        val run = cliRepl(":quit\n", "--no-banner")
+        assertTrue(!run.stdout.contains("Quiver REPL"), "The banner was printed")
+        assertContains(run.stdout, "goodbye")
+    }
+
+    @Test
+    fun `the session opens with the banner`() {
+        val run = cliRepl(":quit\n")
+        assertContains(run.stdout, "Quiver REPL: a term rewriting language for adaptive automata")
+    }
+
+    @Test
+    fun `the report of the loaded program follows the banner`() {
+        val run = cliRepl(":quit\n", "--load", "src/test/resources/simple.quiver")
+        val banner = run.stdout.indexOf("Quiver REPL")
+        val report = run.stdout.indexOf("Loaded src/test/resources/simple.quiver")
+        val prompt = run.stdout.indexOf("quiver> ")
+        assertTrue(banner < report, "The report came before the banner")
+        assertTrue(report < prompt, "The report came after the prompt")
+    }
+
+    @Test
+    fun `the completion of a command names the commands`() {
+        val completion = completionAt(":re", 3, QuiverSession())
+        assertEquals(CompletionLane.Command, completion.lane)
+        val candidates = completion.candidates.map { it.value }
+        assertContains(candidates, ":recognize")
+        assertContains(candidates, ":reset")
+    }
+
+    @Test
+    fun `the completion of a command names the aliases of the commands`() {
+        // The alias is a name the session answers to, so the completion
+        // offers it as well.
+        val completion = completionAt(":ex", 3, QuiverSession())
+        assertEquals(listOf(":exit"), completion.candidates.map { it.value })
+    }
+
+    @Test
+    fun `the completion of a command that takes no argument is silent`() {
+        val completion = completionAt(":reset ", 7, QuiverSession())
+        assertEquals(CompletionLane.Argument, completion.lane)
+        assertEquals(emptyList(), completion.candidates)
+    }
+
+    @Test
+    fun `the completion of an unknown command is silent`() {
+        // The command is unknown, and the lane of the completion is the lane
+        // of a command that takes no argument.
+        val completion = completionAt(":dance ", 7, QuiverSession())
+        assertEquals(CompletionLane.Argument, completion.lane)
+        assertEquals(emptyList(), completion.candidates)
+    }
+
+    @Test
+    fun `the completion of an argument names the words of the command`() {
+        val completion = completionAt(":strategy ", 10, QuiverSession())
+        assertEquals(CompletionLane.Argument, completion.lane)
+        assertEquals(listOf("first", "all", "repeat"), completion.candidates.map { it.value })
+    }
+
+    @Test
+    fun `the completion of an argument names the words that match it`() {
+        val completion = completionAt(":strategy r", 11, QuiverSession())
+        assertEquals(listOf("repeat"), completion.candidates.map { it.value })
+    }
+
+    @Test
+    fun `the completion of an argument is silent when the word is complete`() {
+        val completion = completionAt(":strategy repeat", 16, QuiverSession())
+        assertEquals(emptyList(), completion.candidates)
+    }
+
+    @Test
+    fun `the completion of an argument is silent once the argument is given`() {
+        // The argument of the command is a single word, so the completion
+        // stays silent after it.
+        val completion = completionAt(":strategy first ", 16, QuiverSession())
+        assertEquals(CompletionLane.Argument, completion.lane)
+        assertEquals(emptyList(), completion.candidates)
+    }
+
+    @Test
+    fun `the completion of a file is the lane of the files`() {
+        val completion = completionAt(":load ", 6, QuiverSession())
+        assertEquals(CompletionLane.File, completion.lane)
+        assertEquals(emptyList(), completion.candidates)
+    }
+
+    @Test
+    fun `the completion of the input of a command names the symbols`() {
+        val session = QuiverSession()
+        session.load("src/test/resources/simple.quiver")
+        val completion = completionAt(":recognize ", 11, session)
+        assertEquals(CompletionLane.Input, completion.lane)
+        assertEquals(listOf("a", "b"), completion.candidates.map { it.value })
+    }
+
+    @Test
+    fun `the completion of an input names the symbols of the program`() {
+        val session = QuiverSession()
+        session.load("src/test/resources/simple.quiver")
+        val completion = completionAt("", 0, session)
+        assertEquals(CompletionLane.Input, completion.lane)
+        assertEquals(listOf("a", "b"), completion.candidates.map { it.value })
+    }
+
+    @Test
+    fun `the completion of an input keeps the symbols that are fixed`() {
+        // The commas separate the symbols of the input, so the text up to
+        // the last comma is fixed, and the symbol after it is the one being
+        // completed.
+        val session = QuiverSession()
+        session.load("src/test/resources/simple.quiver")
+        val completion = completionAt("a,", 2, session)
+        assertEquals(listOf("a,a", "a,b"), completion.candidates.map { it.value })
+    }
+
+    @Test
+    fun `the completion of an input is silent when the symbol is complete`() {
+        val session = QuiverSession()
+        session.load("src/test/resources/simple.quiver")
+        val completion = completionAt("a", 1, session)
+        assertEquals(emptyList(), completion.candidates)
+    }
+
+    @Test
+    fun `the highlighter paints the name of a command`() {
+        val spans = highlightSpans(":load file.quiver")
+        assertEquals(HighlightSpan(0, 5, HighlightKind.Command), spans.first())
+    }
+
+    @Test
+    fun `the highlighter paints a command that takes no argument`() {
+        // The command is the whole line, and there is no blank to end it.
+        val spans = highlightSpans(":load")
+        assertEquals(HighlightSpan(0, 5, HighlightKind.Command), spans.first())
+    }
+
+    @Test
+    fun `the highlighter paints a word that starts with a blank`() {
+        // The underscore and the dollar open a word of the language, and the
+        // highlighter knows them.
+        assertEquals(emptyList(), highlightSpans("_x"))
+        assertEquals(emptyList(), highlightSpans("\$x"))
+    }
+
+    @Test
+    fun `the highlighter paints a word with a hyphen`() {
+        // The hyphen is part of a word, so the word is one span and not two.
+        assertEquals(emptyList(), highlightSpans("a-b"))
+    }
+
+    @Test
+    fun `the highlighter paints a string that ends with a backslash`() {
+        // The backslash at the end of the line escapes nothing, and the
+        // literal runs to the end of the line.
+        val spans = highlightSpans("\"abc\\")
+        assertEquals(HighlightSpan(0, 5, HighlightKind.String), spans.first())
+    }
+
+    @Test
+    fun `the highlighter paints a comment`() {
+        val spans = highlightSpans("a # a comment")
+        assertEquals(HighlightSpan(2, 13, HighlightKind.Comment), spans.first())
+    }
+
+    @Test
+    fun `the highlighter paints a string`() {
+        val spans = highlightSpans("\"a b\"")
+        assertEquals(HighlightSpan(0, 5, HighlightKind.String), spans.first())
+    }
+
+    @Test
+    fun `the highlighter paints a string with an escaped quote`() {
+        // The escaped quote does not end the string, and the span covers the
+        // whole literal.
+        val spans = highlightSpans("\"a\\\"b\"")
+        assertEquals(HighlightSpan(0, 6, HighlightKind.String), spans.first())
+    }
+
+    @Test
+    fun `the highlighter paints a string that is not closed`() {
+        val spans = highlightSpans("\"abc")
+        assertEquals(HighlightSpan(0, 4, HighlightKind.String), spans.first())
+    }
+
+    @Test
+    fun `the highlighter paints a number`() {
+        val spans = highlightSpans("42")
+        assertEquals(HighlightSpan(0, 2, HighlightKind.Number), spans.first())
+    }
+
+    @Test
+    fun `the highlighter paints a reserved word`() {
+        val spans = highlightSpans("when")
+        assertEquals(HighlightSpan(0, 4, HighlightKind.Keyword), spans.first())
+    }
+
+    @Test
+    fun `the highlighter paints the hyphenated primitives`() {
+        val spans = highlightSpans("transitions-from")
+        assertEquals(HighlightSpan(0, 16, HighlightKind.Keyword), spans.first())
+    }
+
+    @Test
+    fun `the word at the cursor is the run of characters that ends at it`() {
+        assertEquals(":load", wordAt(":load file", 5))
+        assertEquals("", wordAt(":load ", 6))
+        assertEquals("file", wordAt(":load file", 10))
+    }
+
+    @Test
+    fun `the history of the session is kept in the file it names`() {
+        val file = Files.createTempDirectory("quiver-history").resolve("history")
+        val run = cliReplWithHistory(":rules\n:quit\n", file.toString())
+        assertContains(run.stdout, "goodbye")
+        assertTrue(Files.exists(file), "The history file was not written")
+        val history = Files.readAllLines(file)
+        assertTrue(history.any { it.endsWith(":rules") }, "The history holds no :rules")
+        assertTrue(history.any { it.endsWith(":quit") }, "The history holds no :quit")
+    }
+
+    @Test
+    fun `the history of the session survives a session that ends with the end of the input`() {
+        val file = Files.createTempDirectory("quiver-history").resolve("history")
+        val run = cliReplWithHistory(":rules\n", file.toString())
+        assertContains(run.stdout, "(no rules loaded)")
+        assertTrue(Files.exists(file), "The history file was not written")
+    }
+
+    @Test
+    fun `the history file may have no directory of its own`() {
+        // The path of the history file may name no directory at all, and the
+        // session must not fall over it. The file lands in the working
+        // directory of the process, and the test removes it afterwards.
+        val file = "quiver-history-test.tmp"
+        try {
+            val run = cliReplWithHistory(":quit\n", file)
+            assertEquals(0, run.status)
+            assertContains(run.stdout, "goodbye")
+            assertTrue(Files.exists(Path.of(file)), "The history file was not written")
+        } finally {
+            Files.deleteIfExists(Path.of(file))
+        }
+    }
+
+    @Test
+    fun `the history of the session goes to the state directory by default`() {
+        // The session that names no history file keeps it in the state
+        // directory of the user.
+        val state = Files.createTempDirectory("quiver-state")
+        val terminal = DumbTerminal(ByteArrayInputStream(":quit\n".toByteArray()), ByteArrayOutputStream())
+        val reader =
+            buildReader(
+                terminal,
+                ReplOptions(noHistory = false, stateHome = state.toString(), home = state.toString()),
+                QuiverRepl(),
+            )
+        reader.getHistory().add(":rules")
+        reader.getHistory().save()
+        val file = state.resolve("quiver").resolve("repl-history")
+        assertTrue(Files.exists(file), "The history file was not written")
+        assertTrue(Files.readAllLines(file).any { it.endsWith(":rules") }, "The history holds no :rules")
+    }
+
+    @Test
+    fun `the session reads the commands that are typed`() {
+        // The line the user types is the line the session answers: the
+        // session goes on after every command but the last one.
+        val output = runRepl(":rules\n:quit\n")
+        assertContains(output, "(no rules loaded)")
         assertContains(output, "goodbye")
     }
 
     @Test
-    fun `the repl entry point without arguments opens an empty session`() {
-        val output =
-            captureStdout {
-                withStandardInput(":rules\n:quit\n") {
-                    invokeReplMain(emptyArray())
-                }
-            }
-        assertContains(output, "(no rules loaded)")
+    fun `an interrupted line leaves the session alone`() {
+        // The interruption kills the line that is being typed, and not the
+        // session: the line is empty, and the session goes on.
+        assertEquals("", readLine { throw UserInterruptException("") })
     }
 
-    /**
-     * Invokes the entry point of the REPL.
-     *
-     * The two entry points of the project share their name, so the REPL's is
-     * reached through the facade class of its file.
-     *
-     * @param args the arguments of the entry point.
-     */
-    private fun invokeReplMain(args: Array<String>) {
-        val facade = Class.forName("br.usp.poli.lta.cereda.quiver.QuiverReplKt")
-        val entryPoint = facade.getDeclaredMethod("main", Array<String>::class.java)
-        entryPoint.invoke(null, args)
+    @Test
+    fun `a tab separates a command from its argument`() {
+        // The blank that separates a command from its argument is any
+        // whitespace, and not only the space.
+        val output = runRepl(":load\tsrc/test/resources/simple.quiver\n:quit\n")
+        assertContains(output, "Loaded src/test/resources/simple.quiver")
     }
 
-    /**
-     * Drives the REPL with a script and returns everything it printed.
-     *
-     * @param script the commands to type.
-     */
-    private fun runRepl(script: String): String = captureStdout {
-        QuiverRepl(BufferedReader(StringReader(script))).run()
+    @Test
+    fun `the name of a command ends at the first blank`() {
+        assertEquals(":load", commandNameOf(":load file.quiver"))
+        assertEquals(":load", commandNameOf(":load\tfile.quiver"))
+        assertEquals(":load", commandNameOf(":load"))
+        assertEquals("file.quiver", commandArgumentOf(":load file.quiver"))
+        assertEquals("file.quiver", commandArgumentOf(":load\tfile.quiver"))
+        assertEquals("", commandArgumentOf(":load"))
+    }
+
+    @Test
+    fun `the end of the input ends the session`() {
+        assertEquals(null, readLine { throw EndOfFileException() })
+    }
+
+    @Test
+    fun `the debug commands of a session without a debug session are silent`() {
+        val session = QuiverSession()
+        assertEquals(emptyList(), session.debugStep())
+        assertEquals(emptyList(), session.debugInspect())
+        assertEquals(emptyList(), session.debugContinue())
+    }
+
+    @Test
+    fun `the debug session of a session is the one it started`() {
+        val session = QuiverSession()
+        session.load("src/test/resources/simple.quiver")
+        assertTrue(!session.debugging, "The session was in the debug mode")
+        session.startDebug("a b")
+        assertTrue(session.debugging, "The session was not in the debug mode")
+        session.leaveDebug()
+        assertTrue(!session.debugging, "The session was in the debug mode")
     }
 }

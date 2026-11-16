@@ -1,13 +1,19 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 [versions]
 kotlin-version = "2.4.21"
+clikt-version = "5.1.0"
 detekt-version = "1.23.8"
 dokka-version = "2.3.0"
+jline-version = "4.4.8"
 kover-version = "0.9.11"
 spotless-version = "8.10.4"
 spotless-changelog-version = "3.1.2"
 tapmoc-version = "0.5.0"
 shadow-version = "9.6.1"
+
+[libraries]
+clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt-version" }
+jline = { module = "org.jline:jline", version.ref = "jline-version" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin-version" }

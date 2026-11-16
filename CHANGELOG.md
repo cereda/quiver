@@ -13,6 +13,83 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 
 ## [Unreleased]
 
+### Added
+
+- The **`inspect` command**, which summarizes a program without running it: it
+  reports the header of the automaton, the strategies the program declares, the
+  strategy the run consults, and the rules of that strategy. The summary is
+  built by the same loader the command line and the interactive session use, so
+  the three surfaces cannot disagree about the program they read.
+- The **colours** of the interactive session: the banner, the prompt, the
+  verdict of a recognition and the line being edited are painted, and the
+  colours are the privilege of a terminal. A session whose output is piped is
+  the same session, byte for byte, and the trace of the interpreter is never
+  painted.
+- The **`--color`** and **`--no-color`** options of the interactive session:
+  the first asks for the colours whatever the terminal is, and the second
+  forbids them. The environment variable `NO_COLOR` forbids them as well,
+  whenever it is present and not empty.
+- The **`--no-banner`** option of the interactive session, which opens the
+  session without the banner.
+- The **persistent history** of the interactive session: the commands of a
+  session are kept in a file, and the file is the one the XDG specification
+  names (`$XDG_STATE_HOME/quiver/repl-history`, or
+  `~/.local/state/quiver/repl-history` when the state root is unset). The
+  `--history PATH` option names another file, and `--no-history` keeps the
+  history in memory only.
+- The **completion** and the **highlighting** of the interactive session: the
+  commands, the arguments they accept, the files they load and the symbols of
+  the loaded automaton are completed, and the line being edited is painted with
+  the kinds of span the language knows.
+- The **`:exit` alias** of the `:quit` command, in the interactive session and
+  in the interactive debug mode.
+- The **version option**, `-V` and `--version`, which reports the version of
+  the interpreter.
+- The **completion option**, `--generate-completion`, which writes the shell
+  completion of the command line.
+
+### Changed
+
+- **BREAKING:** the command line has subcommands now, and the options of the
+  run live in the `run` subcommand: the run is `quiver run -i
+  <file.quiver> [<symbol>...]`, and not `quiver -i <file.quiver>
+  [<symbol>...]`. A bare `quiver` prints the help summary of the tool, and it
+  does not run anything.
+- **BREAKING:** the interactive session is the `repl` subcommand: the session
+  is `quiver repl`, and not a bare `quiver`.
+- The command line is built on **Clikt**, and the interactive session is built
+  on **JLine**: the usage summaries, the completion, the line editing and the
+  history are the ones of those libraries. The session reads a pipe and a
+  terminal through the same code path, and a failure of the terminal is a
+  failure of the command, reported with the exit status 1.
+- The interactive session keeps its history on disk, and it saves it when the
+  session ends: the history of a session is there when the next one starts.
+- The **rules of a program** are reported by the interactive session in the
+  order the program declares them, and the rules of a strategy that two
+  declarations share are the rules of the last of them.
+
+### Fixed
+
+- The `:exit` alias of the `:quit` command was undocumented: it is now listed
+  in the help of the interactive session, in the help of the interactive debug
+  mode, in the completion, in the language reference and in the article.
+- The **history of the interactive session** was never written to the disk: it
+  is now saved when the session ends, and it is loaded when the session
+  starts.
+- The **highlighter** of the interactive session ignored the `--color` and
+  `--no-color` options: the line being edited is painted under the same
+  policy as the lines the session prints.
+- The **state root of the XDG specification** was used even when it was not
+  an absolute path: it is now ignored, as the specification says.
+- The **history file** of the interactive session could name a path with no
+  directory of its own, and the session fell over it: the file now lands in
+  the working directory of the process, and the session goes on.
+- The **strategies of a program** were read in two different ways, by the
+  command line and by the interactive session, and the two ways disagreed when
+  two strategies shared a label: every surface now reads them the same way.
+- The **terminal of the interactive session** was not released when the
+  session failed: it is now released even then, and the history is saved.
+
 ## [2.0.0] - 2026-11-15
 
 ### Added

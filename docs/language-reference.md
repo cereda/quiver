@@ -35,7 +35,10 @@ The subsections of the two chapters that matter most to the semantics are
 [the epsilon transition](#the-epsilon-transition), [the cycle
 guard](#the-cycle-guard) and [the closure](#the-closure). The chapter on
 [the sets](#the-sets) describes the set algebra, the set variables and the
-bulk actions.
+bulk actions. The chapters on [the command-line
+interface](#the-command-line-interface) and [the REPL](#the-repl) describe the
+surfaces of the tool: the options of the run, the inspection of a program, the
+commands of the session, its history and its colours.
 
 ## A first program
 
@@ -73,7 +76,7 @@ value that it computed earlier, which is what
 Run it with:
 
 ```bash
-java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/rec.quiver a a b c
+java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/rec.quiver a a b c
 ```
 
 The companion document [the examples](examples.md) walks through every example
@@ -988,13 +991,28 @@ error: the program declares no input; give one on the command line
 
 ## The command-line interface
 
+The tool has three subcommands, and the run is one of them:
+
 ```
-quiver -i <file.quiver> [<symbol>...] [--trace] [--nondet] [--max-steps N]
+quiver run -i <file.quiver> [<symbol>...] [--trace] [--nondet] [--max-steps N]
+quiver repl [--no-history] [--history PATH] [--load FILE] [--no-banner] [--color|--no-color]
+quiver inspect -i <file.quiver>
 ```
+
+| Subcommand | Meaning |
+|---|---|
+| `run` | run a program over an input, and print `true` or `false` |
+| `repl` | start the interactive session |
+| `inspect` | summarize a program, without running it |
+
+A bare invocation, with no subcommand at all, prints the help summary of the tool
+and exits with status 0.
+
+The options of `run`:
 
 | Option | Meaning |
 |---|---|
-| `-i <file.quiver>` | the Quiver source file to execute (required) |
+| `-i`, `--input <file.quiver>` | the Quiver source file to execute (required) |
 | `<symbol>...` | the symbols of the input, one per argument (optional) |
 | `--trace` | print the step trace on the standard error stream |
 | `--nondet` | non-deterministic recognition (NFA-style, any path accepts) |
@@ -1016,7 +1034,7 @@ and the name of the symbol is the text of the argument. The input is therefore a
 sequence of symbols, and not a string:
 
 ```bash
-quiver -i rec.quiver a a b b c c
+quiver run -i rec.quiver a a b b c c
 ```
 
 The command line overrides the input the program declares in its `input` key,
@@ -1041,13 +1059,31 @@ The `--` argument ends the options: every argument that follows it is a symbol
 of the input, even when it looks like an option.
 
 ```bash
-quiver -i rec.quiver -- --trace
+quiver run -i rec.quiver -- --trace
 ```
 
 The `include` directives of the source file are resolved relative to the directory
 of that file.
 
-The executable jar starts the interactive REPL when it is run without arguments.
+The option `--generate-completion` writes the shell completion of the command
+line, and `-V` (or `--version`) reports the version of the interpreter.
+
+### The inspection of a program
+
+The `inspect` subcommand summarizes a program and runs nothing:
+
+```bash
+quiver inspect -i rec.quiver
+```
+
+The summary reports the facts of the header of the automaton (the start state,
+the accepting states, the states, the alphabet and the number of transitions),
+the input the program declares, the strategies it declares, the strategy the run
+consults, and the rules of that strategy. The rules that the active strategy
+does not consult are listed separately, under a heading that says so.
+
+The summary is built by the same loader the run and the interactive session use,
+so the three surfaces cannot disagree about the program they read.
 
 ## The REPL
 
@@ -1055,8 +1091,17 @@ The interactive read-eval-print loop loads a program and recognizes inputs again
 it:
 
 ```bash
-java -jar build/libs/quiver-2.0.0.jar
+java -jar build/libs/quiver-3.0.0.jar repl
 ```
+
+| Option | Meaning |
+|---|---|
+| `--no-history` | keep no history of the session on disk |
+| `--history PATH` | keep the history of the session in `PATH` |
+| `--load FILE` | load a program before the session starts |
+| `--no-banner` | open the session without the banner |
+| `--color` | paint the output, even when it does not go to a terminal |
+| `--no-color` | never paint the output |
 
 | Command | Meaning |
 |---|---|
@@ -1070,7 +1115,7 @@ java -jar build/libs/quiver-2.0.0.jar
 | `:debug <input>` | step through an input, one symbol at a time |
 | `:reset` | forget the loaded rules and the automaton |
 | `:help` | print the summary |
-| `:quit` | leave the REPL |
+| `:quit` / `:exit` | leave the REPL |
 
 Any other line is treated as an input to recognize against the loaded automaton.
 The `:strategy` command with no argument prints its usage instead of being taken for
@@ -1100,14 +1145,49 @@ strategy does not consult, they are listed separately, under a heading that says
 so.
 
 In debug mode, `:step` consumes one symbol, `:inspect` shows the current state,
-the position and the automaton, `:continue` runs to completion, and `:quit` returns
-to the REPL.
+the position and the automaton, `:continue` (or `:c`) runs to completion, and
+`:quit` (or `:exit`) returns to the REPL.
 
 The `:nondet` command toggles the same non-deterministic mode as the `--nondet`
 option of the command line, and the toggle applies to the inputs recognized from
 then on. The `:reset` command turns it off along with the loaded program. The
 interactive debug mode always follows a single path, so it runs deterministically
 even when the non-deterministic mode is on.
+
+### The history of the session
+
+The session keeps the commands it reads in a history file, and the history of a
+session is there when the next one starts. By default the file is the one the
+**XDG specification** names:
+
+```
+$XDG_STATE_HOME/quiver/repl-history
+```
+
+and, when the state root is unset, the default derivation of the specification
+applies:
+
+```
+~/.local/state/quiver/repl-history
+```
+
+The specification says that a state root that is not an absolute path is to be
+ignored, and so it is. The option `--history PATH` names another file, and the
+option `--no-history` keeps the history in memory only.
+
+### The colours of the session
+
+The session paints its banner, its prompt, the verdict of a recognition and the
+line being edited, and **the colours are the privilege of a terminal**: a
+session whose output is piped is the same session, byte for byte. The trace of
+the interpreter is never painted, and it is written on the standard error
+stream, so that a program that redirects the standard output still gets its
+trace.
+
+The option `--color` asks for the colours whatever the terminal is, and the
+option `--no-color` forbids them. The environment variable `NO_COLOR` forbids
+them as well, whenever it is present and not empty. The choice of the user
+overrides the environment, and the environment overrides the terminal.
 
 ## Appendix: the grammar in one block
 

@@ -159,6 +159,16 @@ application {
 }
 
 dependencies {
+    // Clikt owns the command line: the options, the subcommands and the
+    // usage summaries. JLine owns the terminal of the interactive loop: the
+    // line editing, the history and the completion.
+    implementation(libs.clikt)
+    implementation(libs.jline) {
+        artifact {
+            classifier = "jdk11"
+            extension = "jar"
+        }
+    }
     testImplementation(kotlin("test"))
 }
 
@@ -178,36 +188,39 @@ tasks {
     register<org.gradle.api.tasks.JavaExec>("runRepl") {
         group = "application"
         description = "Runs the interactive Quiver REPL."
-        mainClass = "br.usp.poli.lta.cereda.quiver.QuiverReplKt"
+        mainClass = "br.usp.poli.lta.cereda.quiver.QuiverKt"
         classpath = sourceSets["main"].runtimeClasspath
         standardInput = System.`in`
+        args("repl")
     }
 
     build {
         dependsOn("shadowJar")
     }
 
-    // The shadow jar replaces the thin jar on the same output path: every
-    // task that walks that path names an explicit dependency, so the order
-    // stays well-defined (the scripts only reference the file name, but the
-    // validation requires the declaration).
-    named("startScripts") { dependsOn("shadowJar") }
-    named("startShadowScripts") { dependsOn("jar") }
-    named("distZip") { dependsOn("shadowJar") }
-    named("distTar") { dependsOn("shadowJar") }
-    named("shadowDistZip") { dependsOn("jar") }
-    named("shadowDistTar") { dependsOn("jar") }
-    named("installDist") { dependsOn("shadowJar") }
-    named("installShadowDist") { dependsOn("jar") }
+    // The two jars have paths of their own: the thin jar is the one the
+    // distributions and the start scripts use, and the fat jar is the one
+    // the release ships. The fat jar owns the canonical name, so that the
+    // file the build leaves behind is always the executable one.
+    named<Jar>("jar") { archiveClassifier.set("thin") }
 
     // The fat JAR: bundles the interpreter and its runtime into a single
-    // executable. Run it with `java -jar quiver.jar -i file.quiver input` to
-    // recognize an input, or with `java -jar quiver.jar` to start the
-    // interactive REPL.
+    // executable. Run it with `java -jar quiver.jar run -i file.quiver input`
+    // to recognize an input, or with `java -jar quiver.jar repl` to start the
+    // interactive session.
     named<ShadowJar>("shadowJar").configure {
-        archiveClassifier.set("") // replaces the thin jar in build/libs
+        archiveClassifier.set("") // the canonical name of the executable jar
         manifest {
-            attributes("Main-Class" to "br.usp.poli.lta.cereda.quiver.QuiverKt")
+            attributes(
+                "Main-Class" to "br.usp.poli.lta.cereda.quiver.QuiverKt",
+                // The version is the one the `--version` option reports.
+                "Implementation-Version" to project.version.toString(),
+                // JLine reaches the terminal through JNI, and the runtimes
+                // that restrict the native access warn about it on every
+                // start; the attribute tells them that the access is
+                // intended.
+                "Enable-Native-Access" to "ALL-UNNAMED",
+            )
         }
         // Kotlin module files need the WARN duplicate strategy, since the default
         // silently drops same-named entries before the merger sees them.

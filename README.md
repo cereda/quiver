@@ -1,7 +1,7 @@
 # Quiver: a term-rewriting language for adaptive automata
 
 A Kotlin/JVM implementation of **Quiver**, a type-safe term-rewriting language
-for adaptive automata. The current release is **2.0.0**.
+for adaptive automata. The current release is **3.0.0**.
 
 An **adaptive automaton** is a finite automaton whose transition function may change
 while it runs. Quiver describes such an automaton as a set of rewrite rules: each rule
@@ -24,7 +24,7 @@ The source lives at <https://github.com/cereda/quiver>. Clone it and build it:
 git clone https://github.com/cereda/quiver.git
 cd quiver
 ./gradlew build                                              # compile, test, lint, document
-./gradlew run --args="-i src/main/resources/rec.quiver a a b b c c"  # run the example
+./gradlew run --args="run -i src/main/resources/rec.quiver a a b b c c"  # run the example
 ```
 
 Requirements: JDK 17 or later to run the build (Gradle 9.9.1 does not run on
@@ -34,23 +34,37 @@ The build produces a self-contained executable jar (the shadow jar replaces the 
 jar in `build/libs`), so the interpreter runs with no Gradle and no classpath:
 
 ```bash
-java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/rec.quiver a a b b c c
-# the same jar starts the interactive REPL when it gets no arguments:
-java -jar build/libs/quiver-2.0.0.jar
+java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/rec.quiver a a b b c c
+# the same jar starts the interactive REPL when it is told to:
+java -jar build/libs/quiver-3.0.0.jar repl
 ```
 
 The command prints `true` when the input is recognized and `false` otherwise; an
 error is reported on the standard error stream and the process exits with status 1.
+A bare invocation, with no subcommand at all, prints the help summary and exits
+with status 0.
 
 ### Command-line interface
 
+The tool has three subcommands:
+
 ```
-quiver -i <file.quiver> [<symbol>...] [--trace] [--nondet] [--max-steps N]
+quiver run -i <file.quiver> [<symbol>...] [--trace] [--nondet] [--max-steps N]
+quiver repl [--no-history] [--history PATH] [--load FILE] [--no-banner] [--color|--no-color]
+quiver inspect -i <file.quiver>
 ```
+
+| Subcommand | Meaning |
+|---|---|
+| `run` | run a program over an input, and print `true` or `false` |
+| `repl` | start the interactive session |
+| `inspect` | summarize a program, without running it |
+
+The options of `run`:
 
 | Option | Meaning |
 |---|---|
-| `-i <file.quiver>` | the Quiver source file to execute (required) |
+| `-i`, `--input <file.quiver>` | the Quiver source file to execute (required) |
 | `<symbol>...` | the symbols of the input, one per argument (optional) |
 | `--trace` | print the step trace on the standard error stream |
 | `--nondet` | non-deterministic recognition (NFA-style, any path accepts) |
@@ -66,15 +80,25 @@ line fails.
 The `include` directives of the source file are resolved relative to the directory
 of that file.
 
-The executable jar starts the interactive REPL when it is run without arguments.
+The option `--generate-completion` writes the shell completion of the command
+line, and `-V` (or `--version`) reports the version of the interpreter.
 
 ### REPL
 
 ```bash
-java -jar build/libs/quiver-2.0.0.jar
+java -jar build/libs/quiver-3.0.0.jar repl
 ```
 
 While developing, `./gradlew runRepl` starts the same REPL from the sources.
+
+| Option | Meaning |
+|---|---|
+| `--no-history` | keep no history of the session on disk |
+| `--history PATH` | keep the history of the session in `PATH` |
+| `--load FILE` | load a program before the session starts |
+| `--no-banner` | open the session without the banner |
+| `--color` | paint the output, even when it does not go to a terminal |
+| `--no-color` | never paint the output |
 
 | Command | Meaning |
 |---|---|
@@ -87,7 +111,8 @@ While developing, `./gradlew runRepl` starts the same REPL from the sources.
 | `:recognize <input>` | recognize an input, printing `true` or `false` |
 | `:debug <input>` | step through an input, one symbol at a time |
 | `:reset` | forget the loaded rules and the automaton |
-| `:help` / `:quit` | print the summary / leave the REPL |
+| `:help` | print the summary |
+| `:quit` / `:exit` | leave the REPL |
 
 Any other line is treated as an input to recognize against the loaded automaton.
 The line is tokenized by the lexer of the language: the commas separate the
@@ -96,7 +121,21 @@ symbols, the quoted text is one symbol, and a `#` starts a comment. The
 declares in its `input` key.
 
 The interactive debug mode always follows a single path, so it runs
-deterministically even when the non-deterministic mode is on.
+deterministically even when the non-deterministic mode is on. Its own commands
+are `:step`, `:inspect`, `:continue` (or `:c`) and `:quit` (or `:exit`), which
+returns to the REPL.
+
+The session keeps its history on disk, by default in the file the XDG
+specification names: `$XDG_STATE_HOME/quiver/repl-history`, or
+`~/.local/state/quiver/repl-history` when the state root is unset. The history of
+a session is there when the next one starts.
+
+The session paints its banner, its prompt, its verdicts and the line being
+edited, and the colours are the privilege of a terminal: a session whose output
+is piped is the same session, byte for byte. The `--color` and `--no-color`
+options override the terminal, and the environment variable `NO_COLOR` forbids
+the colours whenever it is present and not empty. The trace of the interpreter is
+never painted.
 
 ## Examples
 
@@ -137,8 +176,8 @@ step, with the trace of a concrete input.
 Each of them is a complete program:
 
 ```bash
-java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/abn.quiver a a b b  # true
-java -jar build/libs/quiver-2.0.0.jar -i src/main/resources/abn.quiver a a b    # false
+java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/abn.quiver a a b b  # true
+java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/abn.quiver a a b    # false
 ```
 
 This interpreter defines the precise operational semantics, notably the matching
@@ -196,7 +235,7 @@ documents them in the [language reference](docs/language-reference.md).
 ## Build, tests and quality tooling
 
 ```bash
-./gradlew test          # the test suite (554 tests)
+./gradlew test          # the test suite (669 tests)
 ./gradlew detekt        # the static analysis
 ./gradlew spotlessCheck # the formatting and the license headers
 ./gradlew koverVerify   # the coverage floors
@@ -212,6 +251,8 @@ documents them in the [language reference](docs/language-reference.md).
 | [Dokka](https://kotlinlang.org/docs/dokka.html) | the API documentation, with `failOnWarning` and `reportUndocumented` |
 | [tapmoc](https://github.com/gradleup/tapmoc) | owns the JVM and Kotlin targets |
 | [shadow](https://github.com/gradleup/shadow) | the self-contained executable jar |
+| [Clikt](https://github.com/ajalt/clikt) | the command line: the options, the subcommands and the usage summaries |
+| [JLine](https://github.com/jline/jline3) | the terminal of the interactive session: the line editing, the history and the completion |
 
 The **version** derives from `CHANGELOG.md`: spotless-changelog reads the section that
 describes the release, so a build is `<version>-SNAPSHOT` unless `-Prelease=true` is
@@ -223,7 +264,8 @@ release.
 * Kotlin 2.4.21 (language and API level 2.4), Java target 11, Gradle 9.9.1 wrapper.
 * The interpreter targets **Java 11**: the fat jar runs on a Java 11 runtime. The
   *build* needs **JDK 17 or later**, because Gradle 9 no longer runs on Java 11.
-* No external runtime dependencies beyond the Kotlin standard library.
+* The runtime dependencies are the Kotlin standard library, Clikt and JLine; the
+  executable jar bundles all of them.
 * Licensed under the GNU General Public License, version 3 or later; the full
   text is in [`LICENSE`](LICENSE), and every source file carries the
   `SPDX-License-Identifier: GPL-3.0-or-later` header.

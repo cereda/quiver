@@ -230,7 +230,18 @@ private val HYPHENATED_KEYWORDS =
         FRESH_STATE_KEYWORD,
     )
 
-/** The message reported when the source ends in the middle of a term. */
+/**
+ * The reserved words of the language: the keywords of the lexer and the
+ * hyphenated primitives.
+ *
+ * The highlighter of the REPL paints the words of this set, so that the
+ * words it paints are the words the lexer reserves.
+ */
+internal val RESERVED_WORDS: Set<String> = KEYWORDS.keys + HYPHENATED_KEYWORDS
+
+/**
+ * The message reported when the source ends in the middle of a term.
+ */
 private const val UNEXPECTED_END = "Unexpected end of input"
 
 /**

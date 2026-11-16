@@ -1,0 +1,25 @@
+# A program that declares the same label twice.
+#
+# The header names the label, and the last strategy that carries it is the
+# one the run consults. Every surface of the tool must agree about it: the
+# command line, the interactive session and the inspection.
+@fsm => {
+  start => q0
+  accepting => $seq [ q1 ]
+  strategy => twin
+  mapping => {
+    (q0, a) -> (q0, 0)
+  }
+}
+
+strategy twin first => {
+  (q0, a) -> ($x, $n) => {
+    _ => (q0, b) -> (q1, 0)
+  }
+}
+
+strategy twin first => {
+  (q0, a) -> ($x, $n) => {
+    _ => (q0, b) -> (q1, 0)
+  }
+}
