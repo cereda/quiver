@@ -184,12 +184,10 @@ phases, and the transitions between them enforce the order: `q0` reads the
 | `ac` | `false` (there is no transition out of `q0` on `c`) |
 | `aabbccd` | `false` (there is no transition out of `q2` on `d`) |
 
-**This program is not adaptive, and that is the point.** An earlier version
-of the program also carried rules that incremented a counter on every
-transition, but no rule ever read that counter back, so the rules changed
-nothing about the language the automaton accepted. The version that ships
-here keeps only the part that does the work. The next example is the one
-where the counter matters.
+**This program is not adaptive, and that is the point.** It declares no rule
+at all, and its mapping alone recognizes the language: the automaton stays
+the same while the run goes on. A program that never rewrites its automaton
+is still a program. The next example is the one where the counter matters.
 
 ## `abn.quiver`: an automaton that reads its own counter
 
