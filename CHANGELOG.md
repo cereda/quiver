@@ -13,6 +13,17 @@ is declared by promoting the `[Unreleased]` section to a version heading.
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-11-17
+
+### Changed
+
+- The **executable JAR** is now minimized with R8 in shrink-only mode:
+  unreachable runtime code is removed without renaming classes or methods,
+  optimizing bytecode, or desugaring class files. The JLine native providers,
+  the Mordant JNA backend, the command line, the interactive session and the
+  completion keep their behavior, and the published artifact is roughly half
+  the size of the previous one.
+
 ## [3.0.0] - 2026-11-16
 
 ### Added

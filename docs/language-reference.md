@@ -76,7 +76,7 @@ value that it computed earlier, which is what
 Run it with:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/rec.quiver a a b c
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/rec.quiver a a b c
 ```
 
 The companion document [the examples](examples.md) walks through every example
@@ -1091,7 +1091,7 @@ The interactive read-eval-print loop loads a program and recognizes inputs again
 it:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar repl
+java -jar build/libs/quiver-3.0.1.jar repl
 ```
 
 | Option | Meaning |

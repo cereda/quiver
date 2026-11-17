@@ -1,7 +1,7 @@
 # Quiver: a term-rewriting language for adaptive automata
 
 A Kotlin/JVM implementation of **Quiver**, a type-safe term-rewriting language
-for adaptive automata. The current release is **3.0.0**.
+for adaptive automata. The current release is **3.0.1**.
 
 An **adaptive automaton** is a finite automaton whose transition function may change
 while it runs. Quiver describes such an automaton as a set of rewrite rules: each rule
@@ -34,9 +34,9 @@ The build produces a self-contained executable jar (the shadow jar replaces the 
 jar in `build/libs`), so the interpreter runs with no Gradle and no classpath:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/rec.quiver a a b b c c
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/rec.quiver a a b b c c
 # the same jar starts the interactive REPL when it is told to:
-java -jar build/libs/quiver-3.0.0.jar repl
+java -jar build/libs/quiver-3.0.1.jar repl
 ```
 
 The command prints `true` when the input is recognized and `false` otherwise; an
@@ -86,7 +86,7 @@ line, and `-V` (or `--version`) reports the version of the interpreter.
 ### REPL
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar repl
+java -jar build/libs/quiver-3.0.1.jar repl
 ```
 
 While developing, `./gradlew runRepl` starts the same REPL from the sources.
@@ -176,8 +176,8 @@ step, with the trace of a concrete input.
 Each of them is a complete program:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/abn.quiver a a b b  # true
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/abn.quiver a a b    # false
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/abn.quiver a a b b  # true
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/abn.quiver a a b    # false
 ```
 
 This interpreter defines the precise operational semantics, notably the matching
@@ -250,7 +250,8 @@ documents them in the [language reference](docs/language-reference.md).
 | [Kover](https://github.com/Kotlin/kotlinx-kover) | coverage report, with a floor of 99% lines and 92% branches |
 | [Dokka](https://kotlinlang.org/docs/dokka.html) | the API documentation, with `failOnWarning` and `reportUndocumented` |
 | [tapmoc](https://github.com/gradleup/tapmoc) | owns the JVM and Kotlin targets |
-| [shadow](https://github.com/gradleup/shadow) | the self-contained executable jar |
+| [shadow](https://github.com/gradleup/shadow) | builds the self-contained executable jar |
+| [R8](https://r8.googlesource.com/) | shrinks the executable jar without obfuscation, optimization, or desugaring |
 | [Clikt](https://github.com/ajalt/clikt) | the command line: the options, the subcommands and the usage summaries |
 | [JLine](https://github.com/jline/jline3) | the terminal of the interactive session: the line editing, the history and the completion |
 

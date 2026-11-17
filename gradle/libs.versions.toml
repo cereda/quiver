@@ -6,6 +6,7 @@ detekt-version = "1.23.8"
 dokka-version = "2.3.0"
 jline-version = "4.4.8"
 kover-version = "0.9.11"
+r8-version = "9.1.31"
 spotless-version = "8.10.4"
 spotless-changelog-version = "3.1.2"
 tapmoc-version = "0.5.0"
@@ -14,6 +15,7 @@ shadow-version = "9.6.1"
 [libraries]
 clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt-version" }
 jline = { module = "org.jline:jline", version.ref = "jline-version" }
+r8 = { module = "com.android.tools:r8", version.ref = "r8-version" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin-version" }

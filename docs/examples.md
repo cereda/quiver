@@ -45,7 +45,7 @@ Every example is a Quiver source file. The interpreter recognizes one input
 against it, and the input is a sequence of symbols, one per argument:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/abn.quiver a a b b
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/abn.quiver a a b b
 ```
 
 The command prints `true` when the input is recognized and `false` otherwise.
@@ -53,7 +53,7 @@ The `--trace` option prints what happens at every step on the standard error
 stream, which is how the traces below were produced:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/abn.quiver a a b b --trace
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/abn.quiver a a b b --trace
 ```
 
 The tables below write the input as a word, the way the programs name it: the
@@ -65,7 +65,7 @@ The interactive REPL loads the same files and recognizes as many inputs as you
 like:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar repl
+java -jar build/libs/quiver-3.0.1.jar repl
 ```
 
 ```
@@ -79,7 +79,7 @@ the header of the automaton, the strategies and the rules of the active
 strategy:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar inspect -i src/main/resources/abn.quiver
+java -jar build/libs/quiver-3.0.1.jar inspect -i src/main/resources/abn.quiver
 ```
 
 ## The vocabulary of the traces
@@ -1072,7 +1072,7 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/nondet.quiver a --nondet
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/nondet.quiver a --nondet
 ```
 
 ## `nondet-adaptive.quiver`: per-path adaptive actions
@@ -1137,8 +1137,8 @@ The key point: path q1's retargeting of `(q1,b)` does not affect path q2, and vi
 Run with:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/nondet-adaptive.quiver a b --nondet
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/nondet-adaptive.quiver a c --nondet
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/nondet-adaptive.quiver a b --nondet
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/nondet-adaptive.quiver a c --nondet
 ```
 
 ## `nondet-strategy.quiver`: non-determinism with the `all` strategy
@@ -1253,8 +1253,8 @@ true
 Run with:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/nondet-strategy.quiver a --nondet
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/nondet-repeat.quiver a --nondet
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/nondet-strategy.quiver a --nondet
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/nondet-repeat.quiver a --nondet
 ```
 
 ## `counter-machine.quiver`: the simulation of a counter machine
@@ -1397,7 +1397,7 @@ computation, and it is accepted with the default budget of 10000 steps. A
 budget that is too small does not accept the input, it fails the run:
 
 ```
-$ java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/counter-machine.quiver a a a a a a z --max-steps 8
+$ java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/counter-machine.quiver a a a a a a z --max-steps 8
 error: Epsilon closure did not terminate: the budget was exhausted after 1 internal steps
 ```
 
@@ -1493,7 +1493,7 @@ that set in the value of the `b`-transition.
 Run with:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/set.quiver a b --trace
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/set.quiver a b --trace
 ```
 
 ## `symbols.quiver`: symbols that are not plain identifiers
@@ -1542,7 +1542,7 @@ is the internal marker.
 Run with:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/symbols.quiver golf epsilon
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/symbols.quiver golf epsilon
 ```
 
 ## `input.quiver`: a program that declares its own input
@@ -1566,8 +1566,8 @@ The command line overrides the input the program declares, and a program that
 declares no input and gets none from the command line fails:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/input.quiver       # true
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/input.quiver x y   # false
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/input.quiver       # true
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/input.quiver x y   # false
 ```
 
 The failure of a program without an input is reported without the usage
@@ -1627,5 +1627,5 @@ state `g0` a transition on `b`, and the second step of the run takes it.
 Run with:
 
 ```bash
-java -jar build/libs/quiver-3.0.0.jar run -i src/main/resources/fresh.quiver a b --trace
+java -jar build/libs/quiver-3.0.1.jar run -i src/main/resources/fresh.quiver a b --trace
 ```

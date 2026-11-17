@@ -64,6 +64,7 @@ tapmoc {
 }
 
 repositories {
+    google()
     mavenCentral()
 }
 
@@ -169,6 +170,7 @@ dependencies {
             extension = "jar"
         }
     }
+    shadowR8(libs.r8)
     testImplementation(kotlin("test"))
 }
 
@@ -210,6 +212,61 @@ tasks {
     // interactive session.
     named<ShadowJar>("shadowJar").configure {
         archiveClassifier.set("") // the canonical name of the executable jar
+        minimize {
+            r8 {
+                // R8 removes unreachable code, but it does not rename classes or
+                // methods, optimize bytecode, or desugar the class files.
+                args.set(listOf("--no-minification", "--no-desugaring"))
+
+                // The application and its class metadata are part of the
+                // published contract, so R8 keeps them as they are.
+                keepRules.add("-keep class br.usp.poli.lta.cereda.quiver.** { *; }")
+                keepRules.add("-keepattributes EnclosingMethod,InnerClasses,Signature")
+
+                // These Kotlin runtime helpers and signature carriers preserve
+                // the application ABI and the standard-library entry points the
+                // test suite exercises with the executable jar first on its
+                // classpath.
+                keepRules.add("-keep class kotlin.Result { *; }")
+                keepRules.add("-keep class kotlin.Pair { *; }")
+                keepRules.add("-keep class kotlin.collections.ArraysKt___ArraysKt { *; }")
+                keepRules.add("-keep class kotlin.collections.CollectionsKt___CollectionsKt { *; }")
+                keepRules.add("-keep class kotlin.enums.EnumEntries { *; }")
+                keepRules.add("-keep class kotlin.internal.PlatformImplementations { *; }")
+                keepRules.add("-keep class kotlin.io.TextStreamsKt { *; }")
+                keepRules.add("-keep class kotlin.jvm.functions.Function0 { *; }")
+                keepRules.add("-keep class kotlin.jvm.functions.Function1 { *; }")
+                keepRules.add("-keep class kotlin.jvm.functions.Function2 { *; }")
+                keepRules.add("-keep class kotlin.jvm.internal.Intrinsics { *; }")
+                keepRules.add("-keep class kotlin.jvm.internal.Reflection { *; }")
+                keepRules.add("-keep class kotlin.random.RandomKt { *; }")
+                keepRules.add("-keep class kotlin.random.XorWowRandom { *; }")
+                keepRules.add("-keep class kotlin.reflect.KProperty { *; }")
+
+                // JLine discovers terminal providers through its own resource
+                // mechanism, and its native library reads fields through JNI by
+                // name. Keep the native classes, the providers, and the reader
+                // and terminal API exercised by the interactive session.
+                keepRules.add("-keep class org.jline.nativ.** { *; }")
+                keepRules.add("-keep class org.jline.reader.Completer { *; }")
+                keepRules.add("-keep class org.jline.reader.Highlighter { *; }")
+                keepRules.add("-keep class org.jline.reader.History { *; }")
+                keepRules.add("-keep class org.jline.reader.LineReader { *; }")
+                keepRules.add("-keep class org.jline.terminal.impl.DumbTerminal { *; }")
+                keepRules.add("-keep class org.jline.terminal.impl.DumbTerminalProvider { *; }")
+                keepRules.add("-keep class org.jline.terminal.impl.exec.ExecTerminalProvider { *; }")
+                keepRules.add("-keep class org.jline.terminal.impl.jni.JniTerminalProvider { *; }")
+                keepRules.add("-keep class org.jline.utils.AttributedString { *; }")
+
+                // Mordant discovers its JNA backend through the service-provider
+                // mechanism. Keep the whole backend and its native resources.
+                keepRules.add("-keep class com.sun.jna.** { *; }")
+
+                // JLine's optional charset detector is not bundled, and the
+                // feature that uses it is not reachable from Quiver.
+                keepRules.add("-dontwarn org.mozilla.universalchardet.**")
+            }
+        }
         manifest {
             attributes(
                 "Main-Class" to "br.usp.poli.lta.cereda.quiver.QuiverKt",
